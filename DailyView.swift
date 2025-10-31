@@ -147,19 +147,32 @@ struct DailyView: View {
         let height = CGFloat(duration) * hourHeight
         
         return VStack(alignment: .leading, spacing: 3) {
-            Text(event.title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
-                .lineLimit(2)
-            
+            HStack {
+                Text(event.title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+
+                if !event.pomodoroSessions.isEmpty {
+                    Spacer()
+                    HStack(spacing: 2) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 8))
+                        Text("\(event.pomodoroSessions.count)")
+                            .font(.system(size: 9))
+                    }
+                    .foregroundColor(.blue.opacity(0.8))
+                }
+            }
+
             if !event.tagProjectTask.isEmpty && height > 40 {
                 Text(event.tagProjectTask)
                     .font(.system(size: 9))
                     .foregroundColor(.white.opacity(0.7))
                     .lineLimit(1)
             }
-            
+
             Spacer(minLength: 0)
         }
         .padding(6)
