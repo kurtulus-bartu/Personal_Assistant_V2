@@ -111,7 +111,11 @@ struct PlannerView: View {
                     allEvents: events,
                     allTags: allTags(),
                     allProjects: allProjects(),
-                    // pomodoroProvider: { id in [] } // bağlamak istersen
+                    pomodoroProvider: { eventID in
+                        dataStore.pomodoroSessions
+                            .filter { $0.task?.id == eventID }
+                            .map { $0.toPomodoroSession() }
+                    },
                     onSave: { updated in
                         dataStore.updateTask(updated)
                         self.editingEvent = nil

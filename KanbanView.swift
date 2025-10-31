@@ -3,12 +3,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct KanbanView: View {
+    @EnvironmentObject private var dataStore: DataStore
+
     @Binding var events: [PlannerEvent]
     @Binding var selectedTag: String?
     @Binding var selectedProject: String?
     var onAddEvent: (() -> Void)?
     var onEditEvent: ((PlannerEvent) -> Void)?
-    
+
     @State private var draggedEvent: PlannerEvent?
     @State private var showingEventForm = false
     
@@ -137,6 +139,11 @@ struct KanbanView: View {
                 allEvents: events,
                 allTags: allTags,
                 allProjects: allProjects,
+                pomodoroProvider: { eventID in
+                    dataStore.pomodoroSessions
+                        .filter { $0.task?.id == eventID }
+                        .map { $0.toPomodoroSession() }
+                },
                 onSave: { events.append($0) }
             )
         }
