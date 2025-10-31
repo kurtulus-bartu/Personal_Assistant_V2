@@ -603,6 +603,11 @@ struct TaskPickerView: View {
                 allEvents: events,
                 allTags: allTags,
                 allProjects: allProjects,
+                pomodoroProvider: { eventID in
+                    dataStore.pomodoroSessions
+                        .filter { $0.task?.id == eventID }
+                        .map { $0.toPomodoroSession() }
+                },
                 onSave: { newEvent in
                     dataStore.addTask(newEvent)
                     // Refresh local events array
