@@ -765,6 +765,8 @@ struct TaskPickerView: View {
 // MARK: - History View
 
 struct HistoryView: View {
+    @EnvironmentObject private var dataStore: DataStore
+
     @Binding var history: [PomodoroSessionLog]
     @Binding var pendingNote: String
     let events: [PlannerEvent]
