@@ -5,27 +5,28 @@ import SwiftUI
 
 struct PlannerView: View {
     @Binding var selectedTab: Int
-    
+    @EnvironmentObject private var dataStore: DataStore
+
     @State private var viewMode: PlannerViewMode = .weekly
     @State private var events: [PlannerEvent] = []
     @State private var selectedDate = Date()
-    
+
     // Sheet / popup
     @State private var showingKanban = false
     @State private var showingCalendar = false
     @State private var showingEventForm = false
-    
+
     // Form başlangıç bilgileri
     @State private var eventFormDate: Date?
     @State private var eventFormHour: Int?
     @State private var editingEvent: PlannerEvent?
-    
-    // Filtreler (Weekly/Daily’e iletiliyor)
+
+    // Filtreler (Weekly/Daily'e iletiliyor)
     @State private var selectedTag: String? = nil
     @State private var selectedProject: String? = nil
-    
+
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
-    
+
     private let controlSize: CGFloat = 34
     
     var body: some View {
@@ -112,14 +113,14 @@ struct PlannerView: View {
                     allProjects: allProjects(),
                     // pomodoroProvider: { id in [] } // bağlamak istersen
                     onSave: { updated in
-                        if let i = events.firstIndex(where: { $0.id == editingEvent.id }) {
-                            events[i] = updated
-                        }
+                        dataStore.updateTask(updated)
                         self.editingEvent = nil
+                        loadEvents()
                     },
                     onDelete: { e in
-                        events.removeAll { $0.id == e.id }
+                        dataStore.deleteTask(e)
                         self.editingEvent = nil
+                        loadEvents()
                     }
                 )
             } else {
@@ -131,13 +132,22 @@ struct PlannerView: View {
                     allTags: allTags(),
                     allProjects: allProjects(),
                     onSave: { newEvent in
-                        events.append(newEvent)
+                        dataStore.addTask(newEvent)
                         self.editingEvent = nil
+                        loadEvents()
                     }
                 )
             }
         }
-        .onAppear { loadSampleData() }
+        .onAppear {
+            loadEvents()
+            if events.isEmpty {
+                loadSampleData()
+            }
+        }
+        .onChange(of: dataStore.tasks) { _ in
+            loadEvents()
+        }
     }
     
     // MARK: - Toolbar (telefon & tablet ortak)
@@ -190,8 +200,27 @@ struct PlannerView: View {
         .buttonStyle(.plain)
     }
     
-    private func refreshData() { withAnimation { } }
-    private func backupData() { print("Veriler yedekleniyor...") }
+    private func loadEvents() {
+        events = dataStore.getPlannerEvents()
+    }
+
+    private func refreshData() {
+        withAnimation {
+            dataStore.fetchTasks()
+            loadEvents()
+        }
+    }
+
+    private func backupData() {
+        print("Veriler yedekleniyor...")
+        // Export to JSON for backup
+        if let data = try? JSONEncoder().encode(events) {
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let backupPath = documentsPath.appendingPathComponent("planner_backup_\(Date().timeIntervalSince1970).json")
+            try? data.write(to: backupPath)
+            print("Backup saved to: \(backupPath)")
+        }
+    }
     
     private func allTags() -> [String] {
         Array(Set(events.map { $0.tag }.filter { !$0.isEmpty })).sorted()
@@ -203,7 +232,7 @@ struct PlannerView: View {
     private func loadSampleData() {
         let calendar = Calendar.current
         let now = Date()
-        events = [
+        let sampleEvents = [
             PlannerEvent(
                 title: "Sabah Toplantısı",
                 startDate: calendar.date(bySettingHour: 9, minute: 0, second: 0, of: now)!,
@@ -233,6 +262,12 @@ struct PlannerView: View {
                 tag: "İş", project: "iOS App", task: "In Progress"
             )
         ]
+
+        // Add sample events to DataStore
+        for event in sampleEvents {
+            dataStore.addTask(event)
+        }
+        loadEvents()
     }
 }
 
