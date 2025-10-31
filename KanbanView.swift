@@ -245,15 +245,26 @@ struct KanbanView: View {
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
-            
+
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(metadataLine(for: event))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
+                // Pomodoro sayısı
+                if !event.pomodoroSessions.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "timer")
+                            .font(.caption2)
+                        Text("\(event.pomodoroSessions.count)")
+                            .font(.caption2)
+                    }
+                    .foregroundColor(.blue)
+                }
+
                 Text(event.endDate.formatted(.dateTime.month(.abbreviated).day()))
                     .font(.caption2)
                     .foregroundColor(.secondary)

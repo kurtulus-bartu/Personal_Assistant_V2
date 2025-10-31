@@ -183,7 +183,7 @@ final class PomodoroItem {
             id: log.id,
             start: log.start,
             end: log.end,
-            mode: log.mode.rawValue.lowercased(),
+            mode: log.mode == .focus ? "focus" : "break",
             durationSeconds: log.durationSeconds,
             notes: log.notes,
             wasCompleted: log.wasCompleted,
@@ -293,7 +293,7 @@ class DataStore: ObservableObject {
         if let session = pomodoroSessions.first(where: { $0.id == log.id }) {
             session.start = log.start
             session.end = log.end
-            session.mode = log.mode.rawValue.lowercased()
+            session.mode = log.mode == .focus ? "focus" : "break"
             session.durationSeconds = log.durationSeconds
             session.notes = log.notes
             session.wasCompleted = log.wasCompleted
