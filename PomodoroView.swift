@@ -24,8 +24,10 @@ struct PomodoroSessionLog: Identifiable, Hashable, Codable {
 // MARK: - View
 
 struct PomodoroView: View {
-    @Binding var events: [PlannerEvent]
-    
+    @EnvironmentObject private var dataStore: DataStore
+
+    @State private var events: [PlannerEvent] = []
+
     var onBackup: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
     
@@ -58,7 +60,6 @@ struct PomodoroView: View {
     @State private var history: [PomodoroSessionLog] = []
     @State private var showHistory = false
     @State private var pendingNote: String = ""
-    private let historyKey = "PomodoroHistory_v3"
     private let pendingNoteKey = "PomodoroView_PendingNote"
     
     // Filtreler
@@ -102,7 +103,18 @@ struct PomodoroView: View {
                 }
             }
         }
-        .onAppear { loadHistory(); loadPendingNote(); resetTimerForCurrentMode() }
+        .onAppear {
+            loadEvents()
+            loadHistory()
+            loadPendingNote()
+            resetTimerForCurrentMode()
+        }
+        .onChange(of: dataStore.tasks) { _ in
+            loadEvents()
+        }
+        .onChange(of: dataStore.pomodoroSessions) { _ in
+            loadHistory()
+        }
         .onChange(of: currentMode) { _ in
             if customTotalSeconds == nil { resetTimerForCurrentMode() }
         }
@@ -349,31 +361,28 @@ struct PomodoroView: View {
             notes: pendingNote.trimmingCharacters(in: .whitespacesAndNewlines),
             wasCompleted: true
         )
-        history.insert(log, at: 0)
-        saveHistory()
+        dataStore.addPomodoroSession(log)
         pendingNote = ""
         savePendingNote()
         elapsed = 0
     }
     
     private func deleteLog(_ log: PomodoroSessionLog) {
-        history.removeAll { $0.id == log.id }
-        saveHistory()
+        dataStore.deletePomodoroSession(log)
     }
     
     // MARK: - Data
-    
-    private func loadHistory() {
-        if let data = UserDefaults.standard.data(forKey: historyKey),
-           let decoded = try? JSONDecoder().decode([PomodoroSessionLog].self, from: data) {
-            history = decoded
-        }
+
+    private func loadEvents() {
+        events = dataStore.getPlannerEvents()
     }
-    
+
+    private func loadHistory() {
+        history = dataStore.getPomodoroSessionLogs()
+    }
+
     private func saveHistory() {
-        if let data = try? JSONEncoder().encode(history) {
-            UserDefaults.standard.set(data, forKey: historyKey)
-        }
+        // No longer needed - DataStore handles persistence
     }
     
     private func loadPendingNote() {
@@ -406,6 +415,8 @@ struct PomodoroView: View {
 // MARK: - Task Picker View
 
 struct TaskPickerView: View {
+    @EnvironmentObject private var dataStore: DataStore
+
     @Binding var events: [PlannerEvent]
     @Binding var selectedTag: String?
     @Binding var selectedProject: String?
@@ -414,7 +425,7 @@ struct TaskPickerView: View {
     @Binding var projectTagMap: [String: String]
     @Binding var activeEventID: UUID?
     @Binding var showTaskPicker: Bool
-    
+
     @State private var showingEventForm = false
     
     private enum Popup { case tagAdd, tagEdit, projectAdd, projectEdit }
@@ -592,7 +603,11 @@ struct TaskPickerView: View {
                 allEvents: events,
                 allTags: allTags,
                 allProjects: allProjects,
-                onSave: { events.append($0) }
+                onSave: { newEvent in
+                    dataStore.addTask(newEvent)
+                    // Refresh local events array
+                    events = dataStore.getPlannerEvents()
+                }
             )
         }
     }
@@ -906,11 +921,9 @@ struct HistoryView: View {
     }
     
     private func saveNote() {
-        guard let log = editingLog else { return }
-        if let idx = history.firstIndex(where: { $0.id == log.id }) {
-            history[idx].notes = editNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
-            onSave()
-        }
+        guard var log = editingLog else { return }
+        log.notes = editNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
+        dataStore.updatePomodoroSession(log)
         editingLog = nil
         editNoteText = ""
     }

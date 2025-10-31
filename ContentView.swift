@@ -3,13 +3,13 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab = 0
-    @State private var pomodoroEvents: [PlannerEvent] = []
+    @EnvironmentObject private var dataStore: DataStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass: UserInterfaceSizeClass?
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
             currentView
-            
+
             // Alt, sabit boyutlu yüzen cam navigator (telefon + tablet)
             BottomNavigator(selectedTab: $selectedTab)
                 .padding(.bottom, 4)  // biraz daha aşağıda dursun
@@ -17,13 +17,13 @@ struct ContentView: View {
         }
         .background(Color(UIColor.systemBackground).ignoresSafeArea())
     }
-    
+
     // MARK: - Current View
     @ViewBuilder
     private var currentView: some View {
         switch selectedTab {
         case 0: PlannerView(selectedTab: $selectedTab)
-        case 1: PomodoroView(events: $pomodoroEvents)
+        case 1: PomodoroView()
         case 2: placeholderView(title: "Today", icon: "sun.max")
         case 3: placeholderView(title: "Health", icon: "heart")
         case 4: placeholderView(title: "Notes", icon: "note.text")
