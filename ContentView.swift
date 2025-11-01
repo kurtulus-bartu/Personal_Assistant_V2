@@ -25,7 +25,7 @@ struct ContentView: View {
         case 0: PlannerView(selectedTab: $selectedTab)
         case 1: PomodoroView()
         case 2: placeholderView(title: "Today", icon: "sun.max")
-        case 3: placeholderView(title: "Health", icon: "heart")
+        case 3: HealthView()
         case 4: placeholderView(title: "Notes", icon: "note.text")
         case 5: placeholderView(title: "AI Assistant", icon: "sparkles")
         default: PlannerView(selectedTab: $selectedTab)
