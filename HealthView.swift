@@ -172,6 +172,14 @@ struct HealthView: View {
                 CalendarPickerView(selectedDate: $selectedDate, isPresented: $showCalendar)
                     .transition(.scale.combined(with: .opacity))
             }
+
+            // Goal Input popup
+            if showGoalInput {
+                Color.black.opacity(0.35).ignoresSafeArea()
+                    .onTapGesture { showGoalInput = false }
+
+                GoalInputPopup
+            }
         }
         .onAppear {
             loadData()
@@ -180,7 +188,6 @@ struct HealthView: View {
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
         .sheet(isPresented: $showAddSleep) { AddSleepSheet }
-        .sheet(isPresented: $showGoalInput) { GoalInputSheet }
     }
 
     // MARK: - Toolbar
@@ -999,54 +1006,64 @@ struct HealthView: View {
         .padding()
     }
 
-    private var GoalInputSheet: some View {
+    private var GoalInputPopup: some View {
         VStack(spacing: 0) {
             // Header
-            HStack(spacing: 12) {
+            HStack {
                 Text("Hedef Kilo")
-                    .font(.title2)
+                    .font(.title3)
                     .fontWeight(.semibold)
                 Spacer()
+                Button(action: { showGoalInput = false }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
-            .background(Color(UIColor.systemBackground))
+            .padding(20)
 
             Divider()
 
             // Content
-            VStack(spacing: 16) {
-                HStack {
-                    TextField("Hedef kilo (kg)", text: $weightGoal)
-                        .keyboardType(.decimalPad)
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Hedef Kilo")
                         .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.secondary)
+
+                    TextField("Örn: 75", text: $weightGoal)
                         .textFieldStyle(.plain)
-
-                    Button(action: {
-                        // Save weight goal
-                        showGoalInput = false
-                    }) {
-                        Text("Kaydet")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 8)
-                            .background(Color.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
+                        .keyboardType(.decimalPad)
+                        .padding(12)
+                        .background(Color(UIColor.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 12)
-                .background(Color(UIColor.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .padding(16)
 
-            Spacer()
+                // Buttons
+                Button(action: {
+                    // Save weight goal
+                    showGoalInput = false
+                }) {
+                    Text("Kaydet")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color(UIColor.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .disabled(weightGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .opacity(weightGoal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            }
+            .padding(20)
         }
-        .background(Color(UIColor.systemBackground))
+        .frame(maxWidth: 400)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 30, y: 15)
+        .padding(.horizontal, 24)
     }
 
     // MARK: - Data Helpers
