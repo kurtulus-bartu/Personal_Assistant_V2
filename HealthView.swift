@@ -1,6 +1,18 @@
 import SwiftUI
 import Charts
 
+// MARK: - View Extensions
+
+extension View {
+    @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - Models
 
 enum HealthViewMode: String, Codable, CaseIterable, Identifiable {
@@ -477,7 +489,9 @@ struct HealthView: View {
                         }
                     }
                 }
-                .chartYScale(domain: selectedMetric == .sleep ? 0...28 : nil)
+                .if(selectedMetric == .sleep) { view in
+                    view.chartYScale(domain: 0...28)
+                }
                 .chartYAxis {
                     if selectedMetric == .sleep {
                         AxisMarks(values: [0, 6, 12, 18, 24]) { value in
