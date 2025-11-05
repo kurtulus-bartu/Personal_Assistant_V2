@@ -4,8 +4,23 @@ import Charts
 // MARK: - Models
 
 enum HealthViewMode: String, Codable, CaseIterable, Identifiable {
-    case daily = "Günlük"
-    case weekly = "Haftalık"
+    case health = "Health"
+    case fitness = "Fitness"
+    var id: String { rawValue }
+}
+
+enum HealthMetricType: String, Codable, CaseIterable, Identifiable {
+    case sleep = "Uyku"
+    case movement = "Hareket"
+    case calories = "Kalori"
+    var id: String { rawValue }
+}
+
+enum WeightDataType: String, Codable, CaseIterable, Identifiable {
+    case weight = "Kilo"
+    case bodyFat = "Yağ Oranı"
+    case muscleMass = "Kas Kütlesi"
+    case bmi = "BMI"
     var id: String { rawValue }
 }
 
@@ -63,6 +78,16 @@ struct SleepEntry: Identifiable, Hashable, Codable {
     }
 }
 
+struct WeightEntry: Identifiable, Hashable, Codable {
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var weight: Double = 0 // kg
+    var bodyFat: Double = 0 // percentage
+    var muscleMass: Double = 0 // kg
+    var bmi: Double = 0
+    var notes: String = ""
+}
+
 // MARK: - Health View
 
 struct HealthView: View {
@@ -71,17 +96,21 @@ struct HealthView: View {
     var onBackup: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
 
-    @State private var currentMode: HealthViewMode = .daily
+    @State private var currentMode: HealthViewMode = .health
     @State private var selectedDate = Date()
+    @State private var selectedMetric: HealthMetricType = .calories
+    @State private var selectedWeightDataType: WeightDataType = .weight
+    @State private var selectedMealType: String = "Kahvaltı" // Kahvaltı, Öğle, Akşam
 
     // Data
     @State private var healthEntries: [HealthEntry] = []
     @State private var mealEntries: [MealEntry] = []
     @State private var workoutEntries: [WorkoutEntry] = []
     @State private var sleepEntries: [SleepEntry] = []
+    @State private var weightEntries: [WeightEntry] = []
 
     // UI State
-    @State private var showHistory = false
+    @State private var showCalendar = false
     @State private var showAddMeal = false
     @State private var showAddWorkout = false
     @State private var showAddSleep = false
@@ -99,33 +128,29 @@ struct HealthView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Kalori Özeti
-                        caloriesSummaryCard
-
-                        // Yemek Menüsü
-                        mealSectionCard
-
-                        // Spor Programı
-                        workoutSectionCard
-
-                        // Grafikler
-                        chartsSection
-
-                        // Uyku Grafiği
-                        sleepChartCard
-
-                        // Haftalık Egzersizler
-                        weeklyWorkoutsCard
+                        if currentMode == .health {
+                            healthModeContent
+                        } else {
+                            fitnessModeContent
+                        }
                     }
                     .padding(16)
                 }
+            }
+
+            // Takvim popup
+            if showCalendar {
+                Color.black.opacity(0.3).ignoresSafeArea()
+                    .onTapGesture { showCalendar = false }
+
+                CalendarPickerView(selectedDate: $selectedDate, isPresented: $showCalendar)
+                    .transition(.scale.combined(with: .opacity))
             }
         }
         .onAppear {
             loadData()
             generateSampleData()
         }
-        .sheet(isPresented: $showHistory) { HistorySheet }
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
         .sheet(isPresented: $showAddSleep) { AddSleepSheet }
@@ -158,9 +183,14 @@ struct HealthView: View {
             .padding(.horizontal, 16)
 
             HStack(spacing: 8) {
-                DailyWeeklySwitch(currentMode: $currentMode)
+                HealthFitnessSwitch(currentMode: $currentMode)
                 Spacer()
-                squareButton(systemName: "clock.arrow.circlepath") { showHistory = true }
+                HStack(spacing: 8) {
+                    squareButton(systemName: "calendar") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { showCalendar = true }
+                    }
+                    squareButton(systemName: "fork.knife") { showAddMeal = true }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 4)
@@ -169,225 +199,201 @@ struct HealthView: View {
         .background(Color(UIColor.systemBackground))
     }
 
-    // MARK: - Calories Summary
+    // MARK: - Content Modes
 
-    private var caloriesSummaryCard: some View {
+    private var healthModeContent: some View {
+        VStack(spacing: 20) {
+            // Uyku/Hareket/Kalori Switch
+            healthMetricSwitch
+
+            // Seçilen metriğe göre günlük değer
+            selectedMetricCard
+
+            // Seçilen metriğin haftalık grafiği
+            selectedMetricWeeklyChart
+
+            // Tartı Verileri Bölümü
+            weightDataSection
+        }
+    }
+
+    private var fitnessModeContent: some View {
+        VStack(spacing: 20) {
+            // Haftalık Egzersizler
+            weeklyWorkoutsCard
+
+            // AI Fitness Koçu
+            aiFitnessCoachCard
+        }
+    }
+
+    // MARK: - Health Mode Components
+
+    private var healthMetricSwitch: some View {
+        HStack(spacing: 6) {
+            metricPill("Uyku", metric: .sleep)
+            metricPill("Hareket", metric: .movement)
+            metricPill("Kalori", metric: .calories)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 36)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
+    }
+
+    private func metricPill(_ title: String, metric: HealthMetricType) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                selectedMetric = metric
+            }
+        }) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(selectedMetric == metric ? .blue : .primary.opacity(0.75))
+                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .background(selectedMetric == metric ? Capsule().fill(Color.blue.opacity(0.14)) : nil)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+
+    private var selectedMetricCard: some View {
         let todayEntry = healthEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }) ?? HealthEntry(date: selectedDate)
+        let todaySleep = sleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) })
 
         return VStack(alignment: .leading, spacing: 16) {
-            Text("Kalori Özeti")
+            Text(selectedMetric.rawValue)
                 .font(.headline)
                 .fontWeight(.semibold)
 
-            HStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Yakılan")
+            switch selectedMetric {
+            case .sleep:
+                if let sleep = todaySleep {
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Süre")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.1f saat", sleep.duration))
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.purple)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Kalite")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("\(sleep.quality)/5")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                                .foregroundColor(.orange)
+                        }
+                    }
+                } else {
+                    Text("Bugün uyku verisi yok")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text("\(Int(todayEntry.caloriesBurned))")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.orange)
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Alınan")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(Int(todayEntry.caloriesConsumed))")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.blue)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Açık")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Text("\(Int(todayEntry.calorieDeficit))")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(todayEntry.calorieDeficit >= 0 ? .green : .red)
-                }
-            }
-
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Adım")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text("\(todayEntry.steps)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                }
-
-                Divider().frame(height: 30)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Aktif Dakika")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                    Text("\(todayEntry.activeMinutes)")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                }
-            }
-        }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
-    }
-
-    // MARK: - Meal Section
-
-    private var mealSectionCard: some View {
-        let todayMeals = mealEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Günlük Yemek Menüsü")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Button(action: { showAddMeal = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.blue)
-                }
-            }
-
-            if todayMeals.isEmpty {
-                Text("Henüz yemek kaydı yok")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(todayMeals) { meal in
-                    mealRow(meal: meal)
-                }
-            }
-        }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
-    }
-
-    private func mealRow(meal: MealEntry) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(meal.mealType)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text(meal.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer()
-            Text("\(Int(meal.calories)) kcal")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundColor(.blue)
-        }
-        .padding(.vertical, 4)
-    }
-
-    // MARK: - Workout Section
-
-    private var workoutSectionCard: some View {
-        let todayWorkouts = workoutEntries.filter { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Spor Programı")
-                    .font(.headline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Button(action: { showAddWorkout = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.green)
-                }
-            }
-
-            if todayWorkouts.isEmpty {
-                Text("Bugün spor programı yok")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(todayWorkouts) { workout in
-                    workoutRow(workout: workout)
-                }
-            }
-        }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
-    }
-
-    private func workoutRow(workout: WorkoutEntry) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(workout.workoutType)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Spacer()
-                Text("\(workout.duration) dk")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            if !workout.exercises.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(workout.exercises.prefix(3)) { exercise in
-                        Text("• \(exercise.name) - \(exercise.sets)x\(exercise.reps) @ \(Int(exercise.weight))kg")
-                            .font(.caption2)
+            case .movement:
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Adım")
+                            .font(.caption)
                             .foregroundColor(.secondary)
+                        Text("\(todayEntry.steps)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.green)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Aktif Dakika")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(todayEntry.activeMinutes)")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    }
+                }
+
+            case .calories:
+                HStack(spacing: 20) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Yakılan")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(Int(todayEntry.caloriesBurned))")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.orange)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Alınan")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(Int(todayEntry.caloriesConsumed))")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.blue)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Açık")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text("\(Int(todayEntry.calorieDeficit))")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(todayEntry.calorieDeficit >= 0 ? .green : .red)
                     }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(16)
+        .background(surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
 
-    // MARK: - Charts Section
-
-    private var chartsSection: some View {
-        VStack(spacing: 16) {
-            // Kalori Grafiği
-            calorieChartCard
-
-            // Kalori Açığı Grafiği
-            calorieDeficitChartCard
-        }
-    }
-
-    private var calorieChartCard: some View {
+    private var selectedMetricWeeklyChart: some View {
         let weekData = getWeekData()
+        let weekSleep = getWeekSleepData()
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Haftalık Kalori")
+            Text("Haftalık \(selectedMetric.rawValue)")
                 .font(.headline)
                 .fontWeight(.semibold)
 
             if #available(iOS 16.0, *) {
                 Chart {
-                    ForEach(weekData) { entry in
-                        BarMark(
-                            x: .value("Gün", entry.date, unit: .day),
-                            y: .value("Yakılan", entry.caloriesBurned)
-                        )
-                        .foregroundStyle(.orange)
-
-                        BarMark(
-                            x: .value("Gün", entry.date, unit: .day),
-                            y: .value("Alınan", entry.caloriesConsumed)
-                        )
-                        .foregroundStyle(.blue)
+                    switch selectedMetric {
+                    case .sleep:
+                        ForEach(weekSleep) { entry in
+                            BarMark(
+                                x: .value("Gün", entry.date, unit: .day),
+                                y: .value("Saat", entry.duration)
+                            )
+                            .foregroundStyle(.purple)
+                        }
+                    case .movement:
+                        ForEach(weekData) { entry in
+                            BarMark(
+                                x: .value("Gün", entry.date, unit: .day),
+                                y: .value("Adım", entry.steps)
+                            )
+                            .foregroundStyle(.green)
+                        }
+                    case .calories:
+                        ForEach(weekData) { entry in
+                            LineMark(
+                                x: .value("Gün", entry.date, unit: .day),
+                                y: .value("Açık", entry.calorieDeficit)
+                            )
+                            .foregroundStyle(.green)
+                            .symbol(.circle)
+                        }
                     }
                 }
                 .frame(height: 200)
@@ -404,22 +410,68 @@ struct HealthView: View {
         .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
 
-    private var calorieDeficitChartCard: some View {
-        let weekData = getWeekData()
+    private var weightDataSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Tartı Verileri")
+                    .font(.headline)
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+
+            // Dropdown for data type
+            Menu {
+                ForEach(WeightDataType.allCases) { type in
+                    Button(action: { selectedWeightDataType = type }) {
+                        HStack {
+                            Text(type.rawValue)
+                            if selectedWeightDataType == type {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selectedWeightDataType.rawValue)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(12)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+
+            // Monthly chart
+            monthlyWeightChart
+        }
+        .padding(16)
+        .background(surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
+    }
+
+    private var monthlyWeightChart: some View {
+        let monthData = getMonthWeightData()
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Kalori Açığı")
-                .font(.headline)
-                .fontWeight(.semibold)
+            Text("Aylık Grafik")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
 
             if #available(iOS 16.0, *) {
                 Chart {
-                    ForEach(weekData) { entry in
+                    ForEach(monthData) { entry in
                         LineMark(
-                            x: .value("Gün", entry.date, unit: .day),
-                            y: .value("Açık", entry.calorieDeficit)
+                            x: .value("Tarih", entry.date, unit: .day),
+                            y: .value("Değer", valueForWeightDataType(entry))
                         )
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.blue)
                         .symbol(.circle)
                     }
                 }
@@ -431,46 +483,74 @@ struct HealthView: View {
                     .frame(height: 180)
             }
         }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
 
-    // MARK: - Sleep Chart
+    private func valueForWeightDataType(_ entry: WeightEntry) -> Double {
+        switch selectedWeightDataType {
+        case .weight: return entry.weight
+        case .bodyFat: return entry.bodyFat
+        case .muscleMass: return entry.muscleMass
+        case .bmi: return entry.bmi
+        }
+    }
 
-    private var sleepChartCard: some View {
-        let weekSleep = getWeekSleepData()
+    // MARK: - Fitness Mode Components
 
-        return VStack(alignment: .leading, spacing: 12) {
+    private var aiFitnessCoachCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Uyku Grafiği")
+                Image(systemName: "brain.head.profile")
+                    .font(.title2)
+                    .foregroundColor(.purple)
+                Text("AI Fitness Koçu")
                     .font(.headline)
                     .fontWeight(.semibold)
-                Spacer()
-                Button(action: { showAddSleep = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title3)
-                        .foregroundColor(.purple)
-                }
             }
 
-            if #available(iOS 16.0, *) {
-                Chart {
-                    ForEach(weekSleep) { entry in
-                        BarMark(
-                            x: .value("Gün", entry.date, unit: .day),
-                            y: .value("Saat", entry.duration)
-                        )
-                        .foregroundStyle(.purple)
-                    }
+            VStack(alignment: .leading, spacing: 12) {
+                aiCoachMessage(
+                    icon: "💪",
+                    title: "Bugünün Önerisi",
+                    message: "Geçen hafta üst vücut çalışmanız az kaldı. Bugün göğüs ve omuz egzersizlerine odaklanmanızı öneririm."
+                )
+
+                Divider()
+
+                aiCoachMessage(
+                    icon: "🎯",
+                    title: "Hedef Takibi",
+                    message: "Bu hafta 3/5 antrenmanı tamamladınız. Haftalık hedefinize ulaşmak için 2 antrenman daha yapmalısınız."
+                )
+
+                Divider()
+
+                aiCoachMessage(
+                    icon: "📊",
+                    title: "Performans Analizi",
+                    message: "Bench press kaldırma kapasitesinde son 2 haftada %8 artış gözlemlendi. Harika ilerleme!"
+                )
+            }
+
+            Button(action: {
+                // AI koçu ile etkileşim
+            }) {
+                HStack {
+                    Image(systemName: "message.fill")
+                    Text("Koçla Konuş")
+                        .fontWeight(.medium)
                 }
-                .frame(height: 180)
-            } else {
-                Text("Grafikler iOS 16+ gerektirir")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(height: 180)
+                .font(.subheadline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    LinearGradient(
+                        gradient: Gradient(colors: [.purple, .blue]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
         .padding(16)
@@ -478,6 +558,22 @@ struct HealthView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
+
+    private func aiCoachMessage(icon: String, title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(icon)
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+            }
+            Text(message)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
 
     // MARK: - Weekly Workouts
 
@@ -544,64 +640,172 @@ struct HealthView: View {
 
     // MARK: - Sheets
 
-    private var HistorySheet: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Geçmiş")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                Spacer()
+
+    private var AddMealSheet: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Meal Type Switch
+                mealTypeSwitch
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                Divider()
+
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Current meals for selected type
+                        currentMealsSection
+
+                        // Add new meal form
+                        addNewMealForm
+                    }
+                    .padding(16)
+                }
             }
-            .padding(16)
-
-            Divider()
-
-            ScrollView {
-                VStack(spacing: 12) {
-                    ForEach(healthEntries.sorted(by: { $0.date > $1.date }).prefix(30)) { entry in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.date.formatted(.dateTime.month().day().weekday()))
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                Text("\(Int(entry.calorieDeficit)) kcal açık")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text("🔥 \(Int(entry.caloriesBurned))")
-                                    .font(.caption)
-                                Text("🍽️ \(Int(entry.caloriesConsumed))")
-                                    .font(.caption)
-                            }
-                        }
-                        .padding(12)
-                        .background(surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+            .navigationTitle("Yemek Ekle")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Kapat") {
+                        showAddMeal = false
                     }
                 }
-                .padding(16)
             }
         }
     }
 
-    private var AddMealSheet: some View {
-        VStack(spacing: 16) {
-            Text("Yemek Ekle")
-                .font(.title2)
+    private var mealTypeSwitch: some View {
+        HStack(spacing: 6) {
+            mealTypePill("Kahvaltı")
+            mealTypePill("Öğle")
+            mealTypePill("Akşam")
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 36)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
+    }
+
+    private func mealTypePill(_ type: String) -> some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                selectedMealType = type
+            }
+        }) {
+            Text(type)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(selectedMealType == type ? .blue : .primary.opacity(0.75))
+                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .background(selectedMealType == type ? Capsule().fill(Color.blue.opacity(0.14)) : nil)
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+    }
+
+    private var currentMealsSection: some View {
+        let mealsForType = mealEntries.filter {
+            Calendar.current.isDate($0.date, inSameDayAs: selectedDate) && $0.mealType == selectedMealType
+        }
+
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("\(selectedMealType) Yemekleri")
+                .font(.headline)
                 .fontWeight(.semibold)
 
-            Text("Yemek ekleme formu yakında...")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Button("Kapat") {
-                showAddMeal = false
+            if mealsForType.isEmpty {
+                Text("Henüz \(selectedMealType.lowercased()) yemeği eklenmemiş")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.vertical, 8)
+            } else {
+                ForEach(mealsForType) { meal in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(meal.description)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            if !meal.notes.isEmpty {
+                                Text(meal.notes)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                        Text("\(Int(meal.calories)) kcal")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.blue)
+                    }
+                    .padding(12)
+                    .background(surface)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
             }
-            .padding()
         }
-        .padding()
+        .padding(16)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var addNewMealForm: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Yeni Yemek Ekle")
+                .font(.headline)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Yemek Açıklaması")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("Örn: Tavuk göğsü, pilav, salata", text: .constant(""))
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Kalori")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("Örn: 450", text: .constant(""))
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Notlar (Opsiyonel)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                TextField("Ek notlar...", text: .constant(""))
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Button(action: {
+                // Add meal logic
+                let newMeal = MealEntry(
+                    date: selectedDate,
+                    mealType: selectedMealType,
+                    description: "Sample meal",
+                    calories: 500
+                )
+                mealEntries.append(newMeal)
+            }) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Yemek Ekle")
+                        .fontWeight(.medium)
+                }
+                .font(.subheadline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.blue)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+        .padding(16)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private var AddWorkoutSheet: some View {
@@ -682,6 +886,16 @@ struct HealthView: View {
         }.sorted(by: { $0.date > $1.date })
     }
 
+    private func getMonthWeightData() -> [WeightEntry] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: selectedDate)
+        let monthAgo = calendar.date(byAdding: .day, value: -30, to: today)!
+
+        return weightEntries.filter { entry in
+            entry.date >= monthAgo && entry.date <= today
+        }.sorted(by: { $0.date < $1.date })
+    }
+
     private func generateSampleData() {
         // Generate sample health data for the past week
         let calendar = Calendar.current
@@ -709,12 +923,41 @@ struct HealthView: View {
                 }
             }
         }
+
+        // Generate sample weight data for the past month
+        for i in 0..<30 {
+            if let date = calendar.date(byAdding: .day, value: -i, to: Date()) {
+                let weight = WeightEntry(
+                    date: date,
+                    weight: 75.0 + Double.random(in: -2...2),
+                    bodyFat: 18.0 + Double.random(in: -1...1),
+                    muscleMass: 32.0 + Double.random(in: -0.5...0.5),
+                    bmi: 23.5 + Double.random(in: -0.5...0.5)
+                )
+                weightEntries.append(weight)
+            }
+        }
+
+        // Generate sample workout data
+        let workoutTypes = ["Gym", "Cardio", "Yoga", "Swimming"]
+        for i in 0..<5 {
+            if let date = calendar.date(byAdding: .day, value: -i * 2, to: Date()) {
+                let workout = WorkoutEntry(
+                    date: date,
+                    workoutType: workoutTypes.randomElement() ?? "Gym",
+                    exercises: [],
+                    duration: Int.random(in: 30...90),
+                    caloriesBurned: Double.random(in: 200...500)
+                )
+                workoutEntries.append(workout)
+            }
+        }
     }
 }
 
-// MARK: - Daily/Weekly Switch
+// MARK: - Health/Fitness Switch
 
-struct DailyWeeklySwitch: View {
+struct HealthFitnessSwitch: View {
     @Binding var currentMode: HealthViewMode
 
     private let height: CGFloat = 36
@@ -722,14 +965,14 @@ struct DailyWeeklySwitch: View {
 
     var body: some View {
         HStack(spacing: spacing) {
-            pill("Günlük", isOn: currentMode == .daily) {
+            pill("Health", isOn: currentMode == .health) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    currentMode = .daily
+                    currentMode = .health
                 }
             }
-            pill("Haftalık", isOn: currentMode == .weekly) {
+            pill("Fitness", isOn: currentMode == .fitness) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    currentMode = .weekly
+                    currentMode = .fitness
                 }
             }
         }
