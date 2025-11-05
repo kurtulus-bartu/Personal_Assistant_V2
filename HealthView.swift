@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import HealthKit
 
 // MARK: - View Extensions
 
@@ -104,6 +105,7 @@ struct WeightEntry: Identifiable, Hashable, Codable {
 
 struct HealthView: View {
     @EnvironmentObject private var dataStore: DataStore
+    @StateObject private var healthKitManager = HealthKitManager.shared
 
     var onBackup: (() -> Void)? = nil
     var onRefresh: (() -> Void)? = nil
@@ -127,6 +129,7 @@ struct HealthView: View {
     @State private var showAddWorkout = false
     @State private var showAddSleep = false
     @State private var showGoalInput = false
+    @State private var isLoadingHealthData = false
 
     // Meal editing states
     @State private var editingMealID: UUID? = nil
@@ -184,8 +187,10 @@ struct HealthView: View {
             }
         }
         .onAppear {
-            loadData()
-            generateSampleData()
+            requestHealthKitAuthorization()
+        }
+        .onChange(of: selectedDate) { _ in
+            loadHealthKitData()
         }
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
@@ -208,7 +213,7 @@ struct HealthView: View {
                     squareButton(systemName: "square.grid.2x2") { showAddMeal = true }
                     squareButton(systemName: "arrow.clockwise") {
                         onRefresh?()
-                        loadData()
+                        loadHealthKitData()
                     }
                     squareButton(systemName: "square.and.arrow.up") {
                         onBackup?()
@@ -970,6 +975,17 @@ struct HealthView: View {
         )
         mealEntries.append(newMeal)
 
+        // Save to Apple Health if authorized
+        if healthKitManager.isAuthorized && calories > 0 {
+            healthKitManager.saveDietaryEnergy(calories: calories, date: selectedDate) { success, error in
+                if success {
+                    print("Meal data saved to Apple Health")
+                } else if let error = error {
+                    print("Error saving meal to Apple Health: \(error.localizedDescription)")
+                }
+            }
+        }
+
         // Reset fields
         newMealDescription = ""
         newMealCalories = ""
@@ -1073,9 +1089,90 @@ struct HealthView: View {
 
     // MARK: - Data Helpers
 
-    private func loadData() {
-        // Load from UserDefaults or DataStore in the future
-        // For now, using sample data
+    private func requestHealthKitAuthorization() {
+        healthKitManager.requestAuthorization { success in
+            if success {
+                print("HealthKit authorization granted")
+                loadHealthKitData()
+            } else {
+                print("HealthKit authorization denied")
+                // Fallback to sample data if authorization is denied
+                generateSampleData()
+            }
+        }
+    }
+
+    private func loadHealthKitData() {
+        guard healthKitManager.isAuthorized else {
+            print("HealthKit not authorized, using sample data")
+            generateSampleData()
+            return
+        }
+
+        isLoadingHealthData = true
+
+        // Load week health data
+        healthKitManager.fetchWeekHealthData(for: selectedDate) { [self] weekData in
+            // Clear existing health entries
+            healthEntries.removeAll()
+
+            for (date, data) in weekData.sorted(by: { $0.key < $1.key }) {
+                // Fetch dietary energy for each day
+                healthKitManager.fetchDietaryEnergy(for: date) { caloriesConsumed in
+                    let entry = HealthEntry(
+                        date: date,
+                        caloriesBurned: data.calories,
+                        caloriesConsumed: caloriesConsumed,
+                        steps: data.steps,
+                        activeMinutes: data.activeMinutes
+                    )
+                    healthEntries.append(entry)
+                }
+            }
+        }
+
+        // Load week sleep data
+        let calendar = Calendar.current
+        let startOfWeek = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: selectedDate))!
+
+        sleepEntries.removeAll()
+        for i in 0..<7 {
+            if let date = calendar.date(byAdding: .day, value: i, to: startOfWeek) {
+                healthKitManager.fetchSleepData(for: date) { bedTime, wakeTime, duration in
+                    if let bedTime = bedTime, let wakeTime = wakeTime {
+                        let sleepEntry = SleepEntry(
+                            date: date,
+                            bedTime: bedTime,
+                            wakeTime: wakeTime,
+                            quality: 4, // HealthKit doesn't provide quality directly
+                            notes: ""
+                        )
+                        sleepEntries.append(sleepEntry)
+                    }
+                }
+            }
+        }
+
+        // Load month weight data
+        healthKitManager.fetchMonthWeightData(for: selectedDate) { [self] monthData in
+            weightEntries.removeAll()
+
+            for (date, data) in monthData.sorted(by: { $0.key < $1.key }) {
+                if let weight = data.weight {
+                    let weightEntry = WeightEntry(
+                        date: date,
+                        weight: weight,
+                        bodyFat: data.bodyFat ?? 0,
+                        muscleMass: data.leanMass ?? 0,
+                        bmi: data.bmi ?? 0,
+                        notes: ""
+                    )
+                    weightEntries.append(weightEntry)
+                }
+            }
+
+            isLoadingHealthData = false
+        }
     }
 
     private func backupData() {
