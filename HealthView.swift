@@ -114,6 +114,7 @@ struct HealthView: View {
     @State private var showAddMeal = false
     @State private var showAddWorkout = false
     @State private var showAddSleep = false
+    @State private var showGoalInput = false
 
     // Meal editing states
     @State private var editingMealID: UUID? = nil
@@ -121,6 +122,10 @@ struct HealthView: View {
     @State private var editingText: String = ""
     @State private var newMealDescription: String = ""
     @State private var newMealCalories: String = ""
+
+    // Goal states
+    @State private var dailyCalorieGoal: String = "2000"
+    @State private var dailyProteinGoal: String = "150"
 
     private let controlSize: CGFloat = 34
     private let smallControlSize: CGFloat = 30
@@ -142,6 +147,8 @@ struct HealthView: View {
                             fitnessModeContent
                         }
                     }
+                    .frame(maxWidth: 800)
+                    .frame(maxWidth: .infinity)
                     .padding(16)
                 }
             }
@@ -162,6 +169,7 @@ struct HealthView: View {
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
         .sheet(isPresented: $showAddSleep) { AddSleepSheet }
+        .sheet(isPresented: $showGoalInput) { GoalInputSheet }
     }
 
     // MARK: - Toolbar
@@ -177,7 +185,7 @@ struct HealthView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    squareButton(systemName: "fork.knife") { showAddMeal = true }
+                    squareButton(systemName: "square.grid.2x2") { showAddMeal = true }
                     squareButton(systemName: "arrow.clockwise") {
                         onRefresh?()
                         loadData()
@@ -243,16 +251,20 @@ struct HealthView: View {
     // MARK: - Health Mode Components
 
     private var healthMetricSwitch: some View {
-        HStack(spacing: 6) {
-            metricPill("Uyku", metric: .sleep)
-            metricPill("Hareket", metric: .movement)
-            metricPill("Kalori", metric: .calories)
+        HStack {
+            Spacer()
+            HStack(spacing: 6) {
+                metricPill("Uyku", metric: .sleep)
+                metricPill("Hareket", metric: .movement)
+                metricPill("Kalori", metric: .calories)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 36)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
+            Spacer()
         }
-        .padding(.horizontal, 8)
-        .frame(height: 36)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
-        .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
     }
 
     private func metricPill(_ title: String, metric: HealthMetricType) -> some View {
@@ -304,7 +316,7 @@ struct HealthView: View {
                     Text("Hareket:")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-                    Text("\(todayEntry.steps) adım")
+                    Text("\(Int(todayEntry.caloriesBurned)) kcal")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                 }
@@ -437,7 +449,7 @@ struct HealthView: View {
                                 y: .value("Saat", entry.duration)
                             )
                             .foregroundStyle(.blue)
-                            .annotation(position: .top, spacing: 4) {
+                            .annotation(position: .trailing, alignment: .center) {
                                 if entry.duration > 0 {
                                     Text(formatSleepTime(entry.bedTime, entry.wakeTime))
                                         .font(.caption2)
@@ -632,7 +644,7 @@ struct HealthView: View {
         let weekWorkouts = getWeekWorkouts()
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Bu Hafta Yapılan Egzersizler")
+            Text("Egzersizler")
                 .font(.headline)
                 .fontWeight(.semibold)
 
@@ -668,10 +680,10 @@ struct HealthView: View {
                                 .foregroundColor(.blue)
                         }
                     }
-                    .padding(.vertical, 6)
-                    if workout.id != weekWorkouts.last?.id {
-                        Divider()
-                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
@@ -714,8 +726,8 @@ struct HealthView: View {
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
-                smallSquareButton(systemName: "xmark") {
-                    showAddMeal = false
+                smallSquareButton(systemName: "target") {
+                    showGoalInput = true
                 }
             }
             .padding(.horizontal, 16)
@@ -847,7 +859,10 @@ struct HealthView: View {
                     }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     private var newMealRow: some View {
@@ -955,6 +970,68 @@ struct HealthView: View {
             .padding()
         }
         .padding()
+    }
+
+    private var GoalInputSheet: some View {
+        VStack(spacing: 20) {
+            // Header
+            HStack {
+                Text("Hedef Belirleme")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Spacer()
+                smallSquareButton(systemName: "xmark") {
+                    showGoalInput = false
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+
+            // Goal inputs
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Günlük Kalori Hedefi")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    TextField("2000", text: $dailyCalorieGoal)
+                        .keyboardType(.numberPad)
+                        .padding(12)
+                        .background(Color(UIColor.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Günlük Protein Hedefi (g)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    TextField("150", text: $dailyProteinGoal)
+                        .keyboardType(.numberPad)
+                        .padding(12)
+                        .background(Color(UIColor.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .padding(.horizontal, 16)
+
+            Spacer()
+
+            // Save button
+            Button(action: {
+                showGoalInput = false
+            }) {
+                Text("Kaydet")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.blue)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 20)
+        }
+        .background(Color(UIColor.systemBackground))
     }
 
     // MARK: - Data Helpers
