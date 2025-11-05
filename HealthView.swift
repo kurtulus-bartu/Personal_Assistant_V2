@@ -158,7 +158,7 @@ struct HealthView: View {
                             fitnessModeContent
                         }
                     }
-                    .frame(maxWidth: 800)
+                    .frame(maxWidth: 650)
                     .frame(maxWidth: .infinity)
                     .padding(16)
                 }
@@ -177,8 +177,10 @@ struct HealthView: View {
             if showGoalInput {
                 Color.black.opacity(0.35).ignoresSafeArea()
                     .onTapGesture { showGoalInput = false }
+                    .zIndex(999)
 
                 GoalInputPopup
+                    .zIndex(1000)
             }
         }
         .onAppear {
@@ -761,7 +763,10 @@ struct HealthView: View {
                     .fontWeight(.semibold)
                 Spacer()
                 smallSquareButton(systemName: "target") {
-                    showGoalInput = true
+                    showAddMeal = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showGoalInput = true
+                    }
                 }
             }
             .padding(.horizontal, 16)
