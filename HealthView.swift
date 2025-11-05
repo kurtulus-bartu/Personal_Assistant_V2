@@ -457,18 +457,11 @@ struct HealthView: View {
                     switch selectedMetric {
                     case .sleep:
                         ForEach(weekSleep) { entry in
-                            let bedHour = getSleepHour(from: entry.bedTime)
-                            let wakeHour = getSleepHour(from: entry.wakeTime)
-                            let adjustedWakeHour = wakeHour < bedHour ? wakeHour + 24 : wakeHour
-
-                            RectangleMark(
+                            BarMark(
                                 x: .value("Gün", entry.date, unit: .day),
-                                yStart: .value("Uyku Başlangıç", bedHour),
-                                yEnd: .value("Uyku Bitiş", adjustedWakeHour),
-                                width: .ratio(0.6)
+                                y: .value("Uyku Süresi", entry.duration)
                             )
-                            .foregroundStyle(.blue.opacity(0.7))
-                            .cornerRadius(4)
+                            .foregroundStyle(.blue)
                         }
                     case .movement:
                         ForEach(weekData) { entry in
@@ -489,21 +482,8 @@ struct HealthView: View {
                         }
                     }
                 }
-                .if(selectedMetric == .sleep) { view in
-                    view.chartYScale(domain: 0...28)
-                }
                 .chartYAxis {
-                    if selectedMetric == .sleep {
-                        AxisMarks(values: [0, 6, 12, 18, 24]) { value in
-                            if let hour = value.as(Int.self) {
-                                AxisValueLabel {
-                                    Text("\(hour % 24):00")
-                                        .font(.caption2)
-                                }
-                                AxisGridLine()
-                            }
-                        }
-                    }
+                    AxisMarks(position: .leading)
                 }
                 .frame(height: 200)
             } else {
@@ -572,6 +552,15 @@ struct HealthView: View {
     private var monthlyWeightChart: some View {
         let monthData = getMonthWeightData()
 
+        // Calculate min and max values for better trend visibility
+        let values = monthData.map { valueForWeightDataType($0) }
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 100
+        let range = maxValue - minValue
+        let padding = range * 0.1 // 10% padding
+        let yMin = minValue - padding
+        let yMax = maxValue + padding
+
         return VStack(alignment: .leading, spacing: 12) {
             if #available(iOS 16.0, *) {
                 Chart {
@@ -583,6 +572,10 @@ struct HealthView: View {
                         .foregroundStyle(.blue)
                         .symbol(.circle)
                     }
+                }
+                .chartYScale(domain: yMin...yMax)
+                .chartYAxis {
+                    AxisMarks(position: .leading)
                 }
                 .frame(height: 180)
             } else {
