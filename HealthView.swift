@@ -136,8 +136,6 @@ struct HealthView: View {
     @State private var newMealCalories: String = ""
 
     // Goal states
-    @State private var dailyCalorieGoal: String = "2000"
-    @State private var dailyProteinGoal: String = "150"
     @State private var weightGoal: String = "75"
 
     private let controlSize: CGFloat = 34
@@ -1002,74 +1000,51 @@ struct HealthView: View {
     }
 
     private var GoalInputSheet: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
             // Header
-            HStack {
-                Text("Hedef Belirleme")
+            HStack(spacing: 12) {
+                Text("Hedef Kilo")
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
-                smallSquareButton(systemName: "xmark") {
-                    showGoalInput = false
-                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
+            .padding(.bottom, 8)
+            .background(Color(UIColor.systemBackground))
 
-            // Goal inputs
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Kilo Hedefi (kg)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("75", text: $weightGoal)
+            Divider()
+
+            // Content
+            VStack(spacing: 16) {
+                HStack {
+                    TextField("Hedef kilo (kg)", text: $weightGoal)
                         .keyboardType(.decimalPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Günlük Kalori Hedefi")
                         .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("2000", text: $dailyCalorieGoal)
-                        .keyboardType(.numberPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+                        .textFieldStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Günlük Protein Hedefi (g)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("150", text: $dailyProteinGoal)
-                        .keyboardType(.numberPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Button(action: {
+                        // Save weight goal
+                        showGoalInput = false
+                    }) {
+                        Text("Kaydet")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                 }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.horizontal, 16)
+            .padding(16)
 
             Spacer()
-
-            // Save button
-            Button(action: {
-                showGoalInput = false
-            }) {
-                Text("Kaydet")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
         }
         .background(Color(UIColor.systemBackground))
     }
