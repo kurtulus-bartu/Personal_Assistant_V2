@@ -115,7 +115,15 @@ struct HealthView: View {
     @State private var showAddWorkout = false
     @State private var showAddSleep = false
 
+    // Meal editing states
+    @State private var editingMealID: UUID? = nil
+    @State private var editingField: String = "" // "description" or "calories"
+    @State private var editingText: String = ""
+    @State private var newMealDescription: String = ""
+    @State private var newMealCalories: String = ""
+
     private let controlSize: CGFloat = 34
+    private let smallControlSize: CGFloat = 30
     private var surface: Color { Color(UIColor.secondarySystemBackground) }
 
     var body: some View {
@@ -169,6 +177,7 @@ struct HealthView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
+                    squareButton(systemName: "fork.knife") { showAddMeal = true }
                     squareButton(systemName: "arrow.clockwise") {
                         onRefresh?()
                         loadData()
@@ -185,11 +194,8 @@ struct HealthView: View {
             HStack(spacing: 8) {
                 HealthFitnessSwitch(currentMode: $currentMode)
                 Spacer()
-                HStack(spacing: 8) {
-                    squareButton(systemName: "calendar") {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { showCalendar = true }
-                    }
-                    squareButton(systemName: "fork.knife") { showAddMeal = true }
+                squareButton(systemName: "calendar") {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { showCalendar = true }
                 }
             }
             .padding(.horizontal, 16)
@@ -203,11 +209,18 @@ struct HealthView: View {
 
     private var healthModeContent: some View {
         VStack(spacing: 20) {
-            // Uyku/Hareket/Kalori Switch
-            healthMetricSwitch
+            // Sağlık verileri başlığı
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Sağlık verileri")
+                    .font(.headline)
+                    .fontWeight(.semibold)
 
-            // Seçilen metriğe göre günlük değer
-            selectedMetricCard
+                // Uyku/Hareket/Kalori Switch
+                healthMetricSwitch
+
+                // Seçilen metriğe göre günlük değer
+                selectedMetricCompact
+            }
 
             // Seçilen metriğin haftalık grafiği
             selectedMetricWeeklyChart
@@ -259,6 +272,58 @@ struct HealthView: View {
         .contentShape(Rectangle())
     }
 
+    private var selectedMetricCompact: some View {
+        let todayEntry = healthEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }) ?? HealthEntry(date: selectedDate)
+        let todaySleep = sleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) })
+
+        return HStack(spacing: 12) {
+            switch selectedMetric {
+            case .sleep:
+                if let sleep = todaySleep {
+                    HStack(spacing: 4) {
+                        Text("Uyku:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text(String(format: "%.1f saat", sleep.duration))
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        Text("Uyku:")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Text("—")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                    }
+                }
+
+            case .movement:
+                HStack(spacing: 4) {
+                    Text("Hareket:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("\(todayEntry.steps) adım")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+
+            case .calories:
+                HStack(spacing: 4) {
+                    Text("Kalori:")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("\(Int(todayEntry.calorieDeficit)) açık")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    // Keep old card view for reference if needed
     private var selectedMetricCard: some View {
         let todayEntry = healthEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) }) ?? HealthEntry(date: selectedDate)
         let todaySleep = sleepEntries.first(where: { Calendar.current.isDate($0.date, inSameDayAs: selectedDate) })
@@ -362,10 +427,6 @@ struct HealthView: View {
         let weekSleep = getWeekSleepData()
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Haftalık \(selectedMetric.rawValue)")
-                .font(.headline)
-                .fontWeight(.semibold)
-
             if #available(iOS 16.0, *) {
                 Chart {
                     switch selectedMetric {
@@ -375,7 +436,14 @@ struct HealthView: View {
                                 x: .value("Gün", entry.date, unit: .day),
                                 y: .value("Saat", entry.duration)
                             )
-                            .foregroundStyle(.purple)
+                            .foregroundStyle(.blue)
+                            .annotation(position: .top, spacing: 4) {
+                                if entry.duration > 0 {
+                                    Text(formatSleepTime(entry.bedTime, entry.wakeTime))
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
                     case .movement:
                         ForEach(weekData) { entry in
@@ -383,7 +451,7 @@ struct HealthView: View {
                                 x: .value("Gün", entry.date, unit: .day),
                                 y: .value("Adım", entry.steps)
                             )
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.blue)
                         }
                     case .calories:
                         ForEach(weekData) { entry in
@@ -391,7 +459,7 @@ struct HealthView: View {
                                 x: .value("Gün", entry.date, unit: .day),
                                 y: .value("Açık", entry.calorieDeficit)
                             )
-                            .foregroundStyle(.green)
+                            .foregroundStyle(.blue)
                             .symbol(.circle)
                         }
                     }
@@ -404,10 +472,12 @@ struct HealthView: View {
                     .frame(height: 200)
             }
         }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
+    }
+
+    private func formatSleepTime(_ bedTime: Date, _ wakeTime: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return "\(formatter.string(from: bedTime))-\(formatter.string(from: wakeTime))"
     }
 
     private var weightDataSection: some View {
@@ -449,21 +519,12 @@ struct HealthView: View {
             // Monthly chart
             monthlyWeightChart
         }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
 
     private var monthlyWeightChart: some View {
         let monthData = getMonthWeightData()
 
         return VStack(alignment: .leading, spacing: 12) {
-            Text("Aylık Grafik")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(.secondary)
-
             if #available(iOS 16.0, *) {
                 Chart {
                     ForEach(monthData) { entry in
@@ -501,7 +562,7 @@ struct HealthView: View {
             HStack {
                 Image(systemName: "brain.head.profile")
                     .font(.title2)
-                    .foregroundColor(.purple)
+                    .foregroundColor(.blue)
                 Text("AI Fitness Koçu")
                     .font(.headline)
                     .fontWeight(.semibold)
@@ -543,20 +604,10 @@ struct HealthView: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [.purple, .blue]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
+                .background(Color.blue)
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
     }
 
     private func aiCoachMessage(icon: String, title: String, message: String) -> some View {
@@ -592,7 +643,13 @@ struct HealthView: View {
                     .padding(.vertical, 8)
             } else {
                 ForEach(weekWorkouts) { workout in
-                    HStack {
+                    HStack(spacing: 12) {
+                        // Egzersiz ikonu
+                        Image(systemName: workoutIcon(for: workout.workoutType))
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                            .frame(width: 32)
+
                         VStack(alignment: .leading, spacing: 4) {
                             Text(workout.workoutType)
                                 .font(.subheadline)
@@ -608,18 +665,26 @@ struct HealthView: View {
                                 .fontWeight(.medium)
                             Text("\(Int(workout.caloriesBurned)) kcal")
                                 .font(.caption2)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.blue)
                         }
                     }
                     .padding(.vertical, 6)
-                    Divider()
+                    if workout.id != weekWorkouts.last?.id {
+                        Divider()
+                    }
                 }
             }
         }
-        .padding(16)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
+    }
+
+    private func workoutIcon(for type: String) -> String {
+        switch type.lowercased() {
+        case "gym": return "dumbbell.fill"
+        case "cardio": return "figure.run"
+        case "yoga": return "figure.mind.and.body"
+        case "swimming": return "figure.pool.swim"
+        default: return "figure.strengthtraining.traditional"
+        }
     }
 
     // MARK: - Helper Views
@@ -642,36 +707,65 @@ struct HealthView: View {
 
 
     private var AddMealSheet: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Meal Type Switch
-                mealTypeSwitch
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-
-                Divider()
-
-                ScrollView {
-                    VStack(spacing: 20) {
-                        // Current meals for selected type
-                        currentMealsSection
-
-                        // Add new meal form
-                        addNewMealForm
-                    }
-                    .padding(16)
+        VStack(spacing: 0) {
+            // Header (Kanban/Pomodoro benzeri)
+            HStack(spacing: 12) {
+                Text("Yemek")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                Spacer()
+                smallSquareButton(systemName: "xmark") {
+                    showAddMeal = false
                 }
             }
-            .navigationTitle("Yemek Ekle")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Kapat") {
-                        showAddMeal = false
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+            .background(Color(UIColor.systemBackground))
+
+            // Meal Type Switch
+            HStack(spacing: 8) {
+                mealTypeSwitch
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(UIColor.systemBackground))
+
+            Divider()
+
+            // Liste (direkt arka planda)
+            ScrollView {
+                VStack(spacing: 12) {
+                    let mealsForType = mealEntries.filter {
+                        Calendar.current.isDate($0.date, inSameDayAs: selectedDate) && $0.mealType == selectedMealType
                     }
+
+                    // Mevcut yemekler
+                    ForEach(mealsForType) { meal in
+                        mealRow(meal: meal)
+                    }
+
+                    // Yeni yemek ekleme satırı
+                    newMealRow
                 }
+                .padding(16)
             }
         }
+        .background(Color(UIColor.systemBackground))
+    }
+
+    private func smallSquareButton(systemName: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.primary.opacity(0.9))
+                .frame(width: smallControlSize, height: smallControlSize)
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.2), lineWidth: 1))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        }
+        .buttonStyle(.plain)
     }
 
     private var mealTypeSwitch: some View {
@@ -704,108 +798,127 @@ struct HealthView: View {
         .contentShape(Rectangle())
     }
 
-    private var currentMealsSection: some View {
-        let mealsForType = mealEntries.filter {
-            Calendar.current.isDate($0.date, inSameDayAs: selectedDate) && $0.mealType == selectedMealType
-        }
+    private func mealRow(meal: MealEntry) -> some View {
+        HStack(spacing: 12) {
+            // Eksi butonu (sol tarafta)
+            Button(action: {
+                deleteMeal(meal)
+            }) {
+                Image(systemName: "minus.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.red)
+            }
+            .buttonStyle(.plain)
 
-        return VStack(alignment: .leading, spacing: 12) {
-            Text("\(selectedMealType) Yemekleri")
-                .font(.headline)
-                .fontWeight(.semibold)
-
-            if mealsForType.isEmpty {
-                Text("Henüz \(selectedMealType.lowercased()) yemeği eklenmemiş")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.vertical, 8)
+            // Yemek adı (tıklanabilir)
+            if editingMealID == meal.id && editingField == "description" {
+                TextField("Yemek adı", text: $editingText, onCommit: {
+                    saveMealEdit(meal: meal)
+                })
+                .font(.subheadline)
+                .textFieldStyle(.plain)
             } else {
-                ForEach(mealsForType) { meal in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(meal.description)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                            if !meal.notes.isEmpty {
-                                Text(meal.notes)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        Spacer()
-                        Text("\(Int(meal.calories)) kcal")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.blue)
+                Text(meal.description)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .onTapGesture {
+                        startEditing(meal: meal, field: "description", initialValue: meal.description)
                     }
-                    .padding(12)
-                    .background(surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+            }
+
+            Spacer()
+
+            // Kalori (tıklanabilir)
+            if editingMealID == meal.id && editingField == "calories" {
+                TextField("Kalori", text: $editingText, onCommit: {
+                    saveMealEdit(meal: meal)
+                })
+                .font(.caption)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.plain)
+                .frame(width: 60)
+            } else {
+                Text("\(Int(meal.calories)) kcal")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(.blue)
+                    .onTapGesture {
+                        startEditing(meal: meal, field: "calories", initialValue: String(Int(meal.calories)))
+                    }
             }
         }
-        .padding(16)
-        .background(Color(UIColor.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 8)
     }
 
-    private var addNewMealForm: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Yeni Yemek Ekle")
-                .font(.headline)
-                .fontWeight(.semibold)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Yemek Açıklaması")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("Örn: Tavuk göğsü, pilav, salata", text: .constant(""))
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Kalori")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("Örn: 450", text: .constant(""))
-                    .keyboardType(.numberPad)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Notlar (Opsiyonel)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                TextField("Ek notlar...", text: .constant(""))
-                    .textFieldStyle(.roundedBorder)
-            }
-
+    private var newMealRow: some View {
+        HStack(spacing: 12) {
+            // Artı butonu
             Button(action: {
-                // Add meal logic
-                let newMeal = MealEntry(
-                    date: selectedDate,
-                    mealType: selectedMealType,
-                    description: "Sample meal",
-                    calories: 500
-                )
-                mealEntries.append(newMeal)
+                addNewMeal()
             }) {
-                HStack {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Yemek Ekle")
-                        .fontWeight(.medium)
-                }
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.blue)
+            }
+            .buttonStyle(.plain)
+
+            // Yemek adı text field
+            TextField("Yemek adı", text: $newMealDescription)
                 .font(.subheadline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(Color.blue)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .textFieldStyle(.plain)
+
+            Spacer()
+
+            // Kalori text field
+            TextField("Kalori", text: $newMealCalories)
+                .font(.caption)
+                .keyboardType(.numberPad)
+                .textFieldStyle(.plain)
+                .frame(width: 60)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func startEditing(meal: MealEntry, field: String, initialValue: String) {
+        editingMealID = meal.id
+        editingField = field
+        editingText = initialValue
+    }
+
+    private func saveMealEdit(meal: MealEntry) {
+        if let index = mealEntries.firstIndex(where: { $0.id == meal.id }) {
+            if editingField == "description" {
+                mealEntries[index].description = editingText
+            } else if editingField == "calories" {
+                if let calories = Double(editingText) {
+                    mealEntries[index].calories = calories
+                }
             }
         }
-        .padding(16)
-        .background(Color(UIColor.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        editingMealID = nil
+        editingField = ""
+        editingText = ""
+    }
+
+    private func deleteMeal(_ meal: MealEntry) {
+        mealEntries.removeAll { $0.id == meal.id }
+    }
+
+    private func addNewMeal() {
+        guard !newMealDescription.isEmpty else { return }
+        let calories = Double(newMealCalories) ?? 0
+
+        let newMeal = MealEntry(
+            date: selectedDate,
+            mealType: selectedMealType,
+            description: newMealDescription,
+            calories: calories
+        )
+        mealEntries.append(newMeal)
+
+        // Reset fields
+        newMealDescription = ""
+        newMealCalories = ""
     }
 
     private var AddWorkoutSheet: some View {
