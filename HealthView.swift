@@ -126,6 +126,7 @@ struct HealthView: View {
     // Goal states
     @State private var dailyCalorieGoal: String = "2000"
     @State private var dailyProteinGoal: String = "150"
+    @State private var weightGoal: String = "75"
 
     private let controlSize: CGFloat = 34
     private let smallControlSize: CGFloat = 30
@@ -444,18 +445,18 @@ struct HealthView: View {
                     switch selectedMetric {
                     case .sleep:
                         ForEach(weekSleep) { entry in
-                            BarMark(
+                            let bedHour = getSleepHour(from: entry.bedTime)
+                            let wakeHour = getSleepHour(from: entry.wakeTime)
+                            let adjustedWakeHour = wakeHour < bedHour ? wakeHour + 24 : wakeHour
+
+                            RectangleMark(
                                 x: .value("Gün", entry.date, unit: .day),
-                                y: .value("Saat", entry.duration)
+                                yStart: .value("Uyku Başlangıç", bedHour),
+                                yEnd: .value("Uyku Bitiş", adjustedWakeHour),
+                                width: .ratio(0.6)
                             )
-                            .foregroundStyle(.blue)
-                            .annotation(position: .trailing, alignment: .center) {
-                                if entry.duration > 0 {
-                                    Text(formatSleepTime(entry.bedTime, entry.wakeTime))
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
+                            .foregroundStyle(.blue.opacity(0.7))
+                            .cornerRadius(4)
                         }
                     case .movement:
                         ForEach(weekData) { entry in
@@ -476,6 +477,20 @@ struct HealthView: View {
                         }
                     }
                 }
+                .chartYScale(domain: selectedMetric == .sleep ? 0...28 : nil)
+                .chartYAxis {
+                    if selectedMetric == .sleep {
+                        AxisMarks(values: [0, 6, 12, 18, 24]) { value in
+                            if let hour = value.as(Int.self) {
+                                AxisValueLabel {
+                                    Text("\(hour % 24):00")
+                                        .font(.caption2)
+                                }
+                                AxisGridLine()
+                            }
+                        }
+                    }
+                }
                 .frame(height: 200)
             } else {
                 Text("Grafikler iOS 16+ gerektirir")
@@ -484,6 +499,13 @@ struct HealthView: View {
                     .frame(height: 200)
             }
         }
+    }
+
+    private func getSleepHour(from date: Date) -> Double {
+        let calendar = Calendar.current
+        let hour = calendar.component(.hour, from: date)
+        let minute = calendar.component(.minute, from: date)
+        return Double(hour) + Double(minute) / 60.0
     }
 
     private func formatSleepTime(_ bedTime: Date, _ wakeTime: Date) -> String {
@@ -989,6 +1011,17 @@ struct HealthView: View {
 
             // Goal inputs
             VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Kilo Hedefi (kg)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    TextField("75", text: $weightGoal)
+                        .keyboardType(.decimalPad)
+                        .padding(12)
+                        .background(Color(UIColor.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Günlük Kalori Hedefi")
                         .font(.subheadline)
