@@ -189,9 +189,6 @@ struct HealthView: View {
         .onAppear {
             requestHealthKitAuthorization()
         }
-        .onChange(of: selectedDate) { _ in
-            loadHealthKitData()
-        }
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
         .sheet(isPresented: $showAddSleep) { AddSleepSheet }
@@ -1093,7 +1090,7 @@ struct HealthView: View {
         healthKitManager.requestAuthorization { success in
             if success {
                 print("HealthKit authorization granted")
-                loadHealthKitData()
+                // Data will be loaded when user taps refresh button
             } else {
                 print("HealthKit authorization denied")
                 // Fallback to sample data if authorization is denied
