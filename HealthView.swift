@@ -136,8 +136,6 @@ struct HealthView: View {
     @State private var newMealCalories: String = ""
 
     // Goal states
-    @State private var dailyCalorieGoal: String = "2000"
-    @State private var dailyProteinGoal: String = "150"
     @State private var weightGoal: String = "75"
 
     private let controlSize: CGFloat = 34
@@ -457,18 +455,11 @@ struct HealthView: View {
                     switch selectedMetric {
                     case .sleep:
                         ForEach(weekSleep) { entry in
-                            let bedHour = getSleepHour(from: entry.bedTime)
-                            let wakeHour = getSleepHour(from: entry.wakeTime)
-                            let adjustedWakeHour = wakeHour < bedHour ? wakeHour + 24 : wakeHour
-
-                            RectangleMark(
+                            BarMark(
                                 x: .value("Gün", entry.date, unit: .day),
-                                yStart: .value("Uyku Başlangıç", bedHour),
-                                yEnd: .value("Uyku Bitiş", adjustedWakeHour),
-                                width: .ratio(0.6)
+                                y: .value("Uyku Süresi", entry.duration)
                             )
-                            .foregroundStyle(.blue.opacity(0.7))
-                            .cornerRadius(4)
+                            .foregroundStyle(.blue)
                         }
                     case .movement:
                         ForEach(weekData) { entry in
@@ -489,21 +480,8 @@ struct HealthView: View {
                         }
                     }
                 }
-                .if(selectedMetric == .sleep) { view in
-                    view.chartYScale(domain: 0...28)
-                }
                 .chartYAxis {
-                    if selectedMetric == .sleep {
-                        AxisMarks(values: [0, 6, 12, 18, 24]) { value in
-                            if let hour = value.as(Int.self) {
-                                AxisValueLabel {
-                                    Text("\(hour % 24):00")
-                                        .font(.caption2)
-                                }
-                                AxisGridLine()
-                            }
-                        }
-                    }
+                    AxisMarks(position: .leading)
                 }
                 .frame(height: 200)
             } else {
@@ -572,6 +550,15 @@ struct HealthView: View {
     private var monthlyWeightChart: some View {
         let monthData = getMonthWeightData()
 
+        // Calculate min and max values for better trend visibility
+        let values = monthData.map { valueForWeightDataType($0) }
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 100
+        let range = maxValue - minValue
+        let padding = range * 0.1 // 10% padding
+        let yMin = minValue - padding
+        let yMax = maxValue + padding
+
         return VStack(alignment: .leading, spacing: 12) {
             if #available(iOS 16.0, *) {
                 Chart {
@@ -583,6 +570,10 @@ struct HealthView: View {
                         .foregroundStyle(.blue)
                         .symbol(.circle)
                     }
+                }
+                .chartYScale(domain: yMin...yMax)
+                .chartYAxis {
+                    AxisMarks(position: .leading)
                 }
                 .frame(height: 180)
             } else {
@@ -1009,74 +1000,51 @@ struct HealthView: View {
     }
 
     private var GoalInputSheet: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
             // Header
-            HStack {
-                Text("Hedef Belirleme")
+            HStack(spacing: 12) {
+                Text("Hedef Kilo")
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
-                smallSquareButton(systemName: "xmark") {
-                    showGoalInput = false
-                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 14)
+            .padding(.bottom, 8)
+            .background(Color(UIColor.systemBackground))
 
-            // Goal inputs
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Kilo Hedefi (kg)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("75", text: $weightGoal)
+            Divider()
+
+            // Content
+            VStack(spacing: 16) {
+                HStack {
+                    TextField("Hedef kilo (kg)", text: $weightGoal)
                         .keyboardType(.decimalPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Günlük Kalori Hedefi")
                         .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("2000", text: $dailyCalorieGoal)
-                        .keyboardType(.numberPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
+                        .textFieldStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Günlük Protein Hedefi (g)")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    TextField("150", text: $dailyProteinGoal)
-                        .keyboardType(.numberPad)
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    Button(action: {
+                        // Save weight goal
+                        showGoalInput = false
+                    }) {
+                        Text("Kaydet")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 8)
+                            .background(Color.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
                 }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(Color(UIColor.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
-            .padding(.horizontal, 16)
+            .padding(16)
 
             Spacer()
-
-            // Save button
-            Button(action: {
-                showGoalInput = false
-            }) {
-                Text("Kaydet")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.blue)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 20)
         }
         .background(Color(UIColor.systemBackground))
     }
