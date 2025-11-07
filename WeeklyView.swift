@@ -7,11 +7,13 @@ struct WeeklyView: View {
     @Binding var selectedProject: String?
     var onAddEvent: ((Date, Int) -> Void)?
     var onEditEvent: ((PlannerEvent) -> Void)?
-    
-    
+
+    @EnvironmentObject private var dataStore: DataStore
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @State private var scrollPosition: Int?
-    
+    @State private var draggingEvent: PlannerEvent?
+    @State private var resizingEvent: PlannerEvent?
+
     private let hours = Array(0...23)
     private let hourHeight: CGFloat = 60
     private let calendar = Calendar.current
@@ -185,7 +187,7 @@ struct WeeklyView: View {
             
             ForEach(eventsForDay(date)) { event in
                 eventView(event, for: date)
-                    .onTapGesture(count: 2) {
+                    .onTapGesture {
                         onEditEvent?(event)
                     }
             }
@@ -218,50 +220,88 @@ struct WeeklyView: View {
         let startHour = calendar.component(.hour, from: event.startDate)
         let startMinute = calendar.component(.minute, from: event.startDate)
         let duration = event.endDate.timeIntervalSince(event.startDate) / 3600
-        
+
         let topOffset = CGFloat(startHour) * hourHeight + (CGFloat(startMinute) / 60.0) * hourHeight
         let height = CGFloat(duration) * hourHeight
-        
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(event.title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.white)
-                    .lineLimit(numberOfDays == 7 ? 1 : 2)
 
-                if !event.pomodoroSessions.isEmpty {
-                    Spacer()
-                    HStack(spacing: 2) {
-                        Image(systemName: "timer")
-                            .font(.system(size: 8))
-                        Text("\(event.pomodoroSessions.count)")
-                            .font(.system(size: 9))
+        return ZStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(event.title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .lineLimit(numberOfDays == 7 ? 1 : 2)
+
+                    if !event.pomodoroSessions.isEmpty {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Image(systemName: "timer")
+                                .font(.system(size: 8))
+                            Text("\(event.pomodoroSessions.count)")
+                                .font(.system(size: 9))
+                        }
+                        .foregroundColor(.blue.opacity(0.8))
                     }
-                    .foregroundColor(.blue.opacity(0.8))
                 }
-            }
 
-            if !event.tagProjectTask.isEmpty && height > 40 {
-                Text(event.tagProjectTask)
-                    .font(.system(size: 9))
-                    .foregroundColor(.white.opacity(0.7))
-                    .lineLimit(1)
-            }
+                if !event.tagProjectTask.isEmpty && height > 40 {
+                    Text(event.tagProjectTask)
+                        .font(.system(size: 9))
+                        .foregroundColor(.white.opacity(0.7))
+                        .lineLimit(1)
+                }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            .padding(6)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: max(height - 4, 30))
+            .background(Color(hex: "#2d2d2d"))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Color(hex: "#1a1a1a"), lineWidth: 1)
+            )
+            .cornerRadius(6)
+
+            // Resize handle
+            if height > 40 {
+                Rectangle()
+                    .fill(Color.white.opacity(0.3))
+                    .frame(height: 4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 2)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                resizeEvent(event, dragAmount: value.translation.height)
+                            }
+                            .onEnded { _ in
+                                resizingEvent = nil
+                            }
+                    )
+            }
         }
-        .padding(6)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(height: max(height - 4, 30))
-        .background(Color(hex: "#2d2d2d"))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color(hex: "#1a1a1a"), lineWidth: 1)
-        )
-        .cornerRadius(6)
         .padding(.horizontal, 2)
         .offset(y: topOffset)
+        .gesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .sequenced(before: DragGesture())
+                .onChanged { value in
+                    switch value {
+                    case .second(true, let drag):
+                        if let drag = drag {
+                            moveEvent(event, to: date, dragAmount: drag.translation.height)
+                        }
+                    default:
+                        break
+                    }
+                }
+                .onEnded { _ in
+                    draggingEvent = nil
+                }
+        )
     }
     
     private func eventsForDay(_ date: Date) -> [PlannerEvent] {
@@ -269,8 +309,41 @@ struct WeeklyView: View {
             calendar.isDate(event.startDate, inSameDayAs: date)
         }
     }
-    
-    
+
+    private func resizeEvent(_ event: PlannerEvent, dragAmount: CGFloat) {
+        guard resizingEvent == nil || resizingEvent?.id == event.id else { return }
+        resizingEvent = event
+
+        let hoursDelta = dragAmount / hourHeight
+        let newDuration = max(0.5, event.endDate.timeIntervalSince(event.startDate) / 3600 + hoursDelta)
+
+        var updatedEvent = event
+        updatedEvent.endDate = event.startDate.addingTimeInterval(newDuration * 3600)
+
+        dataStore.updateTask(updatedEvent)
+    }
+
+    private func moveEvent(_ event: PlannerEvent, to date: Date, dragAmount: CGFloat) {
+        guard draggingEvent == nil || draggingEvent?.id == event.id else { return }
+        draggingEvent = event
+
+        let hoursDelta = dragAmount / hourHeight
+        let duration = event.endDate.timeIntervalSince(event.startDate)
+
+        let originalHour = calendar.component(.hour, from: event.startDate)
+        let originalMinute = calendar.component(.minute, from: event.startDate)
+
+        let newHour = max(0, min(23, originalHour + Int(hoursDelta)))
+        let newMinute = originalMinute + Int((hoursDelta - floor(hoursDelta)) * 60)
+
+        if let newStartDate = calendar.date(bySettingHour: newHour, minute: newMinute, second: 0, of: date) {
+            var updatedEvent = event
+            updatedEvent.startDate = newStartDate
+            updatedEvent.endDate = newStartDate.addingTimeInterval(duration)
+
+            dataStore.updateTask(updatedEvent)
+        }
+    }
 }
 
 #Preview {
