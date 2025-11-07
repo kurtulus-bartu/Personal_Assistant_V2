@@ -98,3 +98,28 @@ struct TimeSlot: Identifiable, Codable {
 
 // Görünüm modu
 enum PlannerViewMode { case weekly, daily }
+
+// MARK: - Note Model
+
+/// Not modeli - tag ve projeye göre filtrelenebilir notlar
+struct Note: Identifiable, Hashable, Codable {
+    var id: UUID = UUID()
+    var date: Date = Date()
+    var content: String = ""
+    var tags: [String] = []
+    var project: String = ""
+
+    init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        content: String = "",
+        tags: [String] = [],
+        project: String = ""
+    ) {
+        self.id = id
+        self.date = date
+        self.content = content
+        self.tags = tags
+        self.project = project
+    }
+}

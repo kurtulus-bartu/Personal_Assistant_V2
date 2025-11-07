@@ -477,7 +477,7 @@ struct HealthView: View {
                         ForEach(weekData) { entry in
                             BarMark(
                                 x: .value("Gün", entry.date, unit: .day),
-                                y: .value("Adım", entry.steps)
+                                y: .value("Kalori", entry.caloriesBurned)
                             )
                             .foregroundStyle(.blue)
                         }
