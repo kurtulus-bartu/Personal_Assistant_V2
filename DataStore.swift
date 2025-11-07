@@ -118,6 +118,52 @@ final class TaskItem {
     }
 }
 
+/// SwiftData model for Note
+@Model
+final class NoteItem {
+    var id: UUID
+    var date: Date
+    var content: String
+    var tags: [String]
+    var project: String
+
+    init(
+        id: UUID = UUID(),
+        date: Date = Date(),
+        content: String = "",
+        tags: [String] = [],
+        project: String = ""
+    ) {
+        self.id = id
+        self.date = date
+        self.content = content
+        self.tags = tags
+        self.project = project
+    }
+
+    // Convert from Note
+    static func from(_ note: Note) -> NoteItem {
+        NoteItem(
+            id: note.id,
+            date: note.date,
+            content: note.content,
+            tags: note.tags,
+            project: note.project
+        )
+    }
+
+    // Convert to Note
+    func toNote() -> Note {
+        Note(
+            id: id,
+            date: date,
+            content: content,
+            tags: tags,
+            project: project
+        )
+    }
+}
+
 /// SwiftData model for Pomodoro Session
 @Model
 final class PomodoroItem {
@@ -200,16 +246,18 @@ class DataStore: ObservableObject {
 
     @Published var tasks: [TaskItem] = []
     @Published var pomodoroSessions: [PomodoroItem] = []
+    @Published var notes: [NoteItem] = []
 
     init() {
         do {
-            let schema = Schema([TaskItem.self, PomodoroItem.self])
+            let schema = Schema([TaskItem.self, PomodoroItem.self, NoteItem.self])
             let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
             modelContainer = try ModelContainer(for: schema, configurations: [configuration])
             modelContext = ModelContext(modelContainer)
 
             fetchTasks()
             fetchPomodoroSessions()
+            fetchNotes()
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -333,6 +381,48 @@ class DataStore: ObservableObject {
     // Get PomodoroSessionLogs for binding compatibility
     func getPomodoroSessionLogs() -> [PomodoroSessionLog] {
         pomodoroSessions.map { $0.toPomodoroSessionLog() }
+    }
+
+    // MARK: - Note Operations
+
+    func fetchNotes() {
+        let descriptor = FetchDescriptor<NoteItem>(sortBy: [SortDescriptor(\.date, order: .reverse)])
+        do {
+            notes = try modelContext.fetch(descriptor)
+        } catch {
+            print("Failed to fetch notes: \(error)")
+        }
+    }
+
+    func addNote(_ note: Note) {
+        let noteItem = NoteItem.from(note)
+        modelContext.insert(noteItem)
+        saveContext()
+        fetchNotes()
+    }
+
+    func updateNote(_ note: Note) {
+        if let noteItem = notes.first(where: { $0.id == note.id }) {
+            noteItem.date = note.date
+            noteItem.content = note.content
+            noteItem.tags = note.tags
+            noteItem.project = note.project
+            saveContext()
+            fetchNotes()
+        }
+    }
+
+    func deleteNote(_ note: Note) {
+        if let noteItem = notes.first(where: { $0.id == note.id }) {
+            modelContext.delete(noteItem)
+            saveContext()
+            fetchNotes()
+        }
+    }
+
+    // Get Notes for binding compatibility
+    func getNotes() -> [Note] {
+        notes.map { $0.toNote() }
     }
 
     // Migration: Import existing UserDefaults data
