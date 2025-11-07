@@ -123,6 +123,7 @@ final class TaskItem {
 final class NoteItem {
     var id: UUID
     var date: Date
+    var title: String
     var content: String
     var tags: [String]
     var project: String
@@ -130,12 +131,14 @@ final class NoteItem {
     init(
         id: UUID = UUID(),
         date: Date = Date(),
+        title: String = "",
         content: String = "",
         tags: [String] = [],
         project: String = ""
     ) {
         self.id = id
         self.date = date
+        self.title = title
         self.content = content
         self.tags = tags
         self.project = project
@@ -146,6 +149,7 @@ final class NoteItem {
         NoteItem(
             id: note.id,
             date: note.date,
+            title: note.title,
             content: note.content,
             tags: note.tags,
             project: note.project
@@ -157,6 +161,7 @@ final class NoteItem {
         Note(
             id: id,
             date: date,
+            title: title,
             content: content,
             tags: tags,
             project: project
@@ -404,6 +409,7 @@ class DataStore: ObservableObject {
     func updateNote(_ note: Note) {
         if let noteItem = notes.first(where: { $0.id == note.id }) {
             noteItem.date = note.date
+            noteItem.title = note.title
             noteItem.content = note.content
             noteItem.tags = note.tags
             noteItem.project = note.project

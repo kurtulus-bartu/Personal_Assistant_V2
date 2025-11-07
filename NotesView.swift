@@ -8,37 +8,35 @@ struct NotesView: View {
     @State private var filteredNotes: [Note] = []
 
     // Filter states
-    @State private var selectedTags: Set<String> = []
-    @State private var selectedProject: String = ""
+    @State private var selectedTag: String? = nil
+    @State private var selectedProject: String? = nil
 
     // UI states
     @State private var showAddNote = false
-    @State private var showFilterPopup = false
-
-    // Edit states
-    @State private var editingNoteID: UUID? = nil
-    @State private var editingContent: String = ""
+    @State private var showNoteDetail = false
+    @State private var selectedNote: Note? = nil
 
     // New note states
+    @State private var newNoteTitle: String = ""
     @State private var newNoteContent: String = ""
-    @State private var newNoteTags: Set<String> = []
+    @State private var newNoteTag: String = ""
     @State private var newNoteProject: String = ""
 
     private let controlSize: CGFloat = 34
+    private let smallControlSize: CGFloat = 30
 
     var body: some View {
         ZStack {
-            Color(UIColor.systemBackground).ignoresSafeArea()
+            Color(UIColor.systemBackground)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    hideKeyboard()
+                }
 
             VStack(spacing: 0) {
                 toolbarView
+                filterView
                 Divider()
-
-                // Active filters display
-                if !selectedTags.isEmpty || !selectedProject.isEmpty {
-                    activeFiltersView
-                    Divider()
-                }
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -58,21 +56,30 @@ struct NotesView: View {
 
             // Add Note Sheet
             if showAddNote {
-                Color.black.opacity(0.3).ignoresSafeArea()
-                    .onTapGesture { showAddNote = false }
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showAddNote = false
+                        hideKeyboard()
+                    }
                     .zIndex(999)
 
                 addNotePopup
                     .zIndex(1000)
             }
 
-            // Filter Popup
-            if showFilterPopup {
-                Color.black.opacity(0.3).ignoresSafeArea()
-                    .onTapGesture { showFilterPopup = false }
+            // Note Detail Sheet
+            if showNoteDetail, let note = selectedNote {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showNoteDetail = false
+                        selectedNote = nil
+                        hideKeyboard()
+                    }
                     .zIndex(999)
 
-                filterPopup
+                noteDetailPopup(note)
                     .zIndex(1000)
             }
         }
@@ -93,11 +100,14 @@ struct NotesView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                squareButton(systemName: "line.3.horizontal.decrease.circle") {
-                    showFilterPopup = true
-                }
                 squareButton(systemName: "plus") {
                     showAddNote = true
+                }
+                squareButton(systemName: "arrow.clockwise") {
+                    refreshData()
+                }
+                squareButton(systemName: "square.and.arrow.up") {
+                    backupData()
                 }
             }
             .frame(minWidth: 100, alignment: .trailing)
@@ -107,69 +117,95 @@ struct NotesView: View {
         .background(Color(UIColor.systemBackground))
     }
 
-    // MARK: - Active Filters View
+    // MARK: - Filter View
 
-    private var activeFiltersView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                Text("Filtreler:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                ForEach(Array(selectedTags), id: \.self) { tag in
-                    filterChip(text: tag, type: .tag) {
-                        selectedTags.remove(tag)
-                        applyFilters()
-                    }
-                }
-
-                if !selectedProject.isEmpty {
-                    filterChip(text: selectedProject, type: .project) {
-                        selectedProject = ""
-                        applyFilters()
-                    }
-                }
-
-                Button(action: {
-                    selectedTags.removeAll()
-                    selectedProject = ""
-                    applyFilters()
-                }) {
-                    Text("Temizle")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
+    private var filterView: some View {
+        HStack(spacing: 10) {
+            smallSquareButton(systemName: "plus", tint: .blue) {
+                // Tag ekleme/düzenleme buradan yapılabilir
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-        }
-    }
 
-    private enum FilterChipType {
-        case tag, project
-    }
+            Menu {
+                Button("Tümü") { selectedTag = nil; selectedProject = nil }
+                ForEach(allTags, id: \.self) { tag in
+                    Button(tag) { selectedTag = tag; selectedProject = nil; applyFilters() }
+                }
+            } label: {
+                filterChip(title: "Tag", value: selectedTag ?? "Tümü", color: .blue)
+            }
 
-    private func filterChip(text: String, type: FilterChipType, onRemove: @escaping () -> Void) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: type == .tag ? "tag.fill" : "folder.fill")
-                .font(.caption2)
-            Text(text)
-                .font(.caption)
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
+            Menu {
+                Button("Tümü") { selectedProject = nil; applyFilters() }
+                ForEach(projectsForSelectedTag, id: \.self) { project in
+                    Button(project) { selectedProject = project; applyFilters() }
+                }
+            } label: {
+                filterChip(title: "Project", value: selectedProject ?? "Tümü", color: .green)
+            }
+
+            smallSquareButton(systemName: "plus", tint: .green) {
+                // Proje ekleme/düzenleme buradan yapılabilir
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(type == .tag ? Color.blue.opacity(0.2) : Color.green.opacity(0.2))
-        .clipShape(Capsule())
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func filterChip(title: String, value: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text("\(title): \(value)")
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.85)
+            Image(systemName: "chevron.down").font(.caption2)
+        }
+        .frame(height: 30)
+        .padding(.horizontal, 10)
+        .background(color.opacity(0.10), in: Capsule())
+        .foregroundColor(color)
+    }
+
+    private func smallSquareButton(systemName: String, tint: Color? = nil, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor((tint ?? .primary).opacity(0.9))
+                .frame(width: smallControlSize, height: smallControlSize)
+                .background(
+                    ZStack {
+                        if let tint { tint.opacity(0.12) }
+                        Color.clear.background(.ultraThinMaterial)
+                    }
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(.white.opacity(0.2), lineWidth: 1))
+                .shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Note Card
 
     private func noteCard(_ note: Note) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Title
+            Text(note.title.isEmpty ? "Başlıksız Not" : note.title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Content preview
+            if !note.content.isEmpty {
+                Text(note.content)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             // Tags and Project
             if !note.tags.isEmpty || !note.project.isEmpty {
                 HStack(spacing: 8) {
@@ -201,61 +237,23 @@ struct NotesView: View {
                 }
             }
 
-            // Content
-            if editingNoteID == note.id {
-                TextEditor(text: $editingContent)
-                    .frame(minHeight: 80)
-                    .padding(8)
-                    .background(Color(UIColor.tertiarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                HStack {
-                    Button("İptal") {
-                        editingNoteID = nil
-                        editingContent = ""
-                    }
-                    .foregroundColor(.secondary)
-
-                    Spacer()
-
-                    Button("Kaydet") {
-                        saveNoteEdit(note)
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundColor(.blue)
-                }
-            } else {
-                Text(note.content)
-                    .font(.body)
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .onTapGesture {
-                        startEditing(note)
-                    }
-            }
-
-            // Date and Actions
+            // Date
             HStack {
                 Text(note.date.formatted(.dateTime.month().day().year().hour().minute()))
                     .font(.caption)
                     .foregroundColor(.secondary)
 
                 Spacer()
-
-                Button(action: {
-                    deleteNote(note)
-                }) {
-                    Image(systemName: "trash")
-                        .font(.caption)
-                        .foregroundColor(.red)
-                }
             }
         }
         .padding(16)
         .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
+        .onTapGesture {
+            selectedNote = note
+            showNoteDetail = true
+        }
     }
 
     // MARK: - Empty State
@@ -265,7 +263,7 @@ struct NotesView: View {
             Image(systemName: "note.text")
                 .font(.system(size: 60))
                 .foregroundColor(.blue.opacity(0.5))
-            Text(selectedTags.isEmpty && selectedProject.isEmpty ? "Henüz not yok" : "Filtre ile eşleşen not bulunamadı")
+            Text(selectedTag == nil && selectedProject == nil ? "Henüz not yok" : "Filtre ile eşleşen not bulunamadı")
                 .font(.headline)
                 .foregroundColor(.secondary)
             Text("Yeni bir not eklemek için + butonuna dokunun")
@@ -289,6 +287,7 @@ struct NotesView: View {
                 Button(action: {
                     showAddNote = false
                     resetNewNoteFields()
+                    hideKeyboard()
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
@@ -301,6 +300,20 @@ struct NotesView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Title
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Başlık")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+
+                        TextField("Not başlığı", text: $newNoteTitle)
+                            .textFieldStyle(.plain)
+                            .padding(12)
+                            .background(Color(UIColor.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
                     // Content
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Not İçeriği")
@@ -310,19 +323,20 @@ struct NotesView: View {
 
                         TextEditor(text: $newNoteContent)
                             .frame(minHeight: 120)
+                            .scrollContentBackground(.hidden)
                             .padding(8)
                             .background(Color(UIColor.tertiarySystemBackground))
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
 
-                    // Tags
+                    // Tag
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Etiketler (Opsiyonel)")
+                        Text("Tag (Opsiyonel)")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.secondary)
 
-                        tagSelector
+                        tagSelectorForAdd
                     }
 
                     // Project
@@ -332,7 +346,7 @@ struct NotesView: View {
                             .fontWeight(.medium)
                             .foregroundColor(.secondary)
 
-                        projectSelector
+                        projectSelectorForAdd
                     }
 
                     // Add Button
@@ -343,13 +357,18 @@ struct NotesView: View {
                             .foregroundColor(.primary)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color(UIColor.tertiarySystemBackground))
+                            .background(Color.blue)
+                            .foregroundColor(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    .disabled(newNoteContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(newNoteContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+                    .disabled(newNoteTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(newNoteTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
                 }
                 .padding(20)
+            }
+            .onTapGesture {
+                // ScrollView içinde tap edince hiçbir şey yapma, sadece keyboard'u kapat
+                hideKeyboard()
             }
         }
         .frame(maxWidth: 500)
@@ -360,17 +379,26 @@ struct NotesView: View {
         .padding(.horizontal, 24)
     }
 
-    // MARK: - Filter Popup
+    // MARK: - Note Detail Popup
 
-    private var filterPopup: some View {
-        VStack(spacing: 0) {
+    private func noteDetailPopup(_ note: Note) -> some View {
+        @State var editedTitle = note.title
+        @State var editedContent = note.content
+        @State var editedTag = note.tags.first ?? ""
+        @State var editedProject = note.project
+
+        return VStack(spacing: 0) {
             // Header
             HStack {
-                Text("Filtrele")
+                Text("Not Detayı")
                     .font(.title3)
                     .fontWeight(.semibold)
                 Spacer()
-                Button(action: { showFilterPopup = false }) {
+                Button(action: {
+                    showNoteDetail = false
+                    selectedNote = nil
+                    hideKeyboard()
+                }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title3)
                         .foregroundColor(.secondary)
@@ -382,14 +410,43 @@ struct NotesView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Tags
+                    // Title
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Etiketler")
+                        Text("Başlık")
                             .font(.subheadline)
                             .fontWeight(.medium)
                             .foregroundColor(.secondary)
 
-                        tagSelector
+                        TextField("Not başlığı", text: $editedTitle)
+                            .textFieldStyle(.plain)
+                            .padding(12)
+                            .background(Color(UIColor.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    // Content
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Not İçeriği")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+
+                        TextEditor(text: $editedContent)
+                            .frame(minHeight: 200)
+                            .scrollContentBackground(.hidden)
+                            .padding(8)
+                            .background(Color(UIColor.tertiarySystemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    // Tag
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tag")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+
+                        tagSelectorForEdit(selectedTag: $editedTag)
                     }
 
                     // Project
@@ -399,44 +456,67 @@ struct NotesView: View {
                             .fontWeight(.medium)
                             .foregroundColor(.secondary)
 
-                        projectSelector
+                        projectSelectorForEdit(selectedTag: editedTag, selectedProject: $editedProject)
                     }
 
-                    // Apply Button
-                    Button(action: {
-                        applyFilters()
-                        showFilterPopup = false
-                    }) {
-                        Text("Filtrele")
+                    // Action Buttons
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            deleteNote(note)
+                            showNoteDetail = false
+                            selectedNote = nil
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Sil")
+                            }
                             .font(.subheadline)
                             .fontWeight(.semibold)
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
-                            .background(Color(UIColor.tertiarySystemBackground))
+                            .background(Color.red)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+
+                        Button(action: {
+                            saveNoteEdit(note, title: editedTitle, content: editedContent, tag: editedTag, project: editedProject)
+                            showNoteDetail = false
+                            selectedNote = nil
+                        }) {
+                            Text("Kaydet")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Color.blue)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
                     }
                 }
                 .padding(20)
             }
+            .onTapGesture {
+                hideKeyboard()
+            }
         }
-        .frame(maxWidth: 400)
-        .frame(maxHeight: 500)
+        .frame(maxWidth: 500)
+        .frame(maxHeight: 600)
         .background(Color(UIColor.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: .black.opacity(0.3), radius: 30, y: 15)
         .padding(.horizontal, 24)
     }
 
-    // MARK: - Tag Selector
+    // MARK: - Tag Selector for Add
 
-    private var tagSelector: some View {
-        let availableTags = getAvailableTags()
-        let tagsToUse = showAddNote ? newNoteTags : selectedTags
+    private var tagSelectorForAdd: some View {
+        let availableTags = allTags
 
         return VStack(alignment: .leading, spacing: 8) {
             if availableTags.isEmpty {
-                Text("Henüz etiket yok")
+                Text("Henüz tag yok")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(12)
@@ -444,34 +524,30 @@ struct NotesView: View {
                     .background(Color(UIColor.tertiarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             } else {
-                FlowLayout(spacing: 8) {
+                Menu {
+                    Button("Tag Yok") { newNoteTag = "" }
                     ForEach(availableTags, id: \.self) { tag in
-                        Button(action: {
-                            toggleTag(tag)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: tagsToUse.contains(tag) ? "checkmark.circle.fill" : "circle")
-                                    .font(.caption)
-                                Text(tag)
-                                    .font(.caption)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(tagsToUse.contains(tag) ? Color.blue : Color(UIColor.tertiarySystemBackground))
-                            .foregroundColor(tagsToUse.contains(tag) ? .white : .primary)
-                            .clipShape(Capsule())
-                        }
+                        Button(tag) { newNoteTag = tag }
                     }
+                } label: {
+                    HStack {
+                        Text(newNoteTag.isEmpty ? "Tag Seç" : newNoteTag)
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .padding(12)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
     }
 
-    // MARK: - Project Selector
+    // MARK: - Project Selector for Add
 
-    private var projectSelector: some View {
-        let availableProjects = getAvailableProjects()
-        let projectToUse = showAddNote ? newNoteProject : selectedProject
+    private var projectSelectorForAdd: some View {
+        let availableProjects = projectsForTag(newNoteTag)
 
         return VStack(alignment: .leading, spacing: 8) {
             if availableProjects.isEmpty {
@@ -483,26 +559,91 @@ struct NotesView: View {
                     .background(Color(UIColor.tertiarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
             } else {
-                ForEach([""] + availableProjects, id: \.self) { project in
-                    Button(action: {
-                        if showAddNote {
-                            newNoteProject = project
-                        } else {
-                            selectedProject = project
-                        }
-                    }) {
-                        HStack {
-                            Image(systemName: projectToUse == project ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(projectToUse == project ? .blue : .secondary)
-                            Text(project.isEmpty ? "Proje Yok" : project)
-                                .font(.subheadline)
-                            Spacer()
-                        }
-                        .padding(12)
-                        .background(Color(UIColor.tertiarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                Menu {
+                    Button("Proje Yok") { newNoteProject = "" }
+                    ForEach(availableProjects, id: \.self) { project in
+                        Button(project) { newNoteProject = project }
                     }
-                    .foregroundColor(.primary)
+                } label: {
+                    HStack {
+                        Text(newNoteProject.isEmpty ? "Proje Seç" : newNoteProject)
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .padding(12)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    // MARK: - Tag Selector for Edit
+
+    private func tagSelectorForEdit(selectedTag: Binding<String>) -> some View {
+        let availableTags = allTags
+
+        return VStack(alignment: .leading, spacing: 8) {
+            if availableTags.isEmpty {
+                Text("Henüz tag yok")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Menu {
+                    Button("Tag Yok") { selectedTag.wrappedValue = "" }
+                    ForEach(availableTags, id: \.self) { tag in
+                        Button(tag) { selectedTag.wrappedValue = tag }
+                    }
+                } label: {
+                    HStack {
+                        Text(selectedTag.wrappedValue.isEmpty ? "Tag Seç" : selectedTag.wrappedValue)
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .padding(12)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+    }
+
+    // MARK: - Project Selector for Edit
+
+    private func projectSelectorForEdit(selectedTag: String, selectedProject: Binding<String>) -> some View {
+        let availableProjects = projectsForTag(selectedTag)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            if availableProjects.isEmpty {
+                Text("Henüz proje yok")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                Menu {
+                    Button("Proje Yok") { selectedProject.wrappedValue = "" }
+                    ForEach(availableProjects, id: \.self) { project in
+                        Button(project) { selectedProject.wrappedValue = project }
+                    }
+                } label: {
+                    HStack {
+                        Text(selectedProject.wrappedValue.isEmpty ? "Proje Seç" : selectedProject.wrappedValue)
+                            .font(.subheadline)
+                        Spacer()
+                        Image(systemName: "chevron.down").font(.caption2)
+                    }
+                    .padding(12)
+                    .background(Color(UIColor.tertiarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
         }
@@ -532,23 +673,29 @@ struct NotesView: View {
     }
 
     private func applyFilters() {
-        if selectedTags.isEmpty && selectedProject.isEmpty {
+        if selectedTag == nil && selectedProject == nil {
             filteredNotes = notes
         } else {
             filteredNotes = notes.filter { note in
-                let tagMatch = selectedTags.isEmpty || !selectedTags.isDisjoint(with: note.tags)
-                let projectMatch = selectedProject.isEmpty || note.project == selectedProject
-                return tagMatch && projectMatch
+                var match = true
+                if let tag = selectedTag {
+                    match = match && note.tags.contains(tag)
+                }
+                if let project = selectedProject {
+                    match = match && note.project == project
+                }
+                return match
             }
         }
     }
 
     private func addNewNote() {
-        guard !newNoteContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        guard !newNoteTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         let note = Note(
+            title: newNoteTitle,
             content: newNoteContent,
-            tags: Array(newNoteTags),
+            tags: newNoteTag.isEmpty ? [] : [newNoteTag],
             project: newNoteProject
         )
         dataStore.addNote(note)
@@ -556,27 +703,25 @@ struct NotesView: View {
 
         showAddNote = false
         resetNewNoteFields()
+        hideKeyboard()
     }
 
     private func resetNewNoteFields() {
+        newNoteTitle = ""
         newNoteContent = ""
-        newNoteTags.removeAll()
+        newNoteTag = ""
         newNoteProject = ""
     }
 
-    private func startEditing(_ note: Note) {
-        editingNoteID = note.id
-        editingContent = note.content
-    }
-
-    private func saveNoteEdit(_ note: Note) {
+    private func saveNoteEdit(_ note: Note, title: String, content: String, tag: String, project: String) {
         var updatedNote = note
-        updatedNote.content = editingContent
+        updatedNote.title = title
+        updatedNote.content = content
+        updatedNote.tags = tag.isEmpty ? [] : [tag]
+        updatedNote.project = project
         dataStore.updateNote(updatedNote)
         loadNotes()
-
-        editingNoteID = nil
-        editingContent = ""
+        hideKeyboard()
     }
 
     private func deleteNote(_ note: Note) {
@@ -584,108 +729,85 @@ struct NotesView: View {
         loadNotes()
     }
 
-    private func toggleTag(_ tag: String) {
-        if showAddNote {
-            if newNoteTags.contains(tag) {
-                newNoteTags.remove(tag)
-            } else {
-                newNoteTags.insert(tag)
-            }
-        } else {
-            if selectedTags.contains(tag) {
-                selectedTags.remove(tag)
-            } else {
-                selectedTags.insert(tag)
-            }
-        }
+    private func refreshData() {
+        loadNotes()
+        print("Notes refreshed")
     }
 
-    private func getAvailableTags() -> [String] {
-        // Get tags from existing notes and tasks
+    private func backupData() {
+        // Backup işlemi buraya eklenebilir
+        print("Notes backed up")
+    }
+
+    // MARK: - Helper Functions
+
+    private var allTags: [String] {
         var tags = Set<String>()
         for note in notes {
             tags.formUnion(note.tags)
         }
-        for task in dataStore.getPlannerEvents() {
-            if !task.tag.isEmpty {
-                tags.insert(task.tag)
+        // PlannerEvent'lerden de tag'leri al
+        for event in dataStore.getPlannerEvents() {
+            if !event.tag.isEmpty {
+                tags.insert(event.tag)
             }
         }
         return tags.sorted()
     }
 
-    private func getAvailableProjects() -> [String] {
-        // Get projects from existing notes and tasks
+    private var projectsForSelectedTag: [String] {
+        if let tag = selectedTag {
+            return projectsForTag(tag)
+        } else {
+            return allProjects
+        }
+    }
+
+    private var allProjects: [String] {
         var projects = Set<String>()
         for note in notes {
             if !note.project.isEmpty {
                 projects.insert(note.project)
             }
         }
-        for task in dataStore.getPlannerEvents() {
-            if !task.project.isEmpty {
-                projects.insert(task.project)
+        // PlannerEvent'lerden de projeleri al
+        for event in dataStore.getPlannerEvents() {
+            if !event.project.isEmpty {
+                projects.insert(event.project)
             }
         }
         return projects.sorted()
     }
-}
 
-// MARK: - Flow Layout for Tags
-
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = FlowResult(
-            in: proposal.replacingUnspecifiedDimensions().width,
-            subviews: subviews,
-            spacing: spacing
-        )
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(
-            in: bounds.width,
-            subviews: subviews,
-            spacing: spacing
-        )
-        for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x, y: bounds.minY + result.positions[index].y), proposal: .unspecified)
+    private func projectsForTag(_ tag: String) -> [String] {
+        if tag.isEmpty {
+            return allProjects
         }
-    }
 
-    struct FlowResult {
-        var size: CGSize
-        var positions: [CGPoint]
+        var projects = Set<String>()
 
-        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
-            var positions: [CGPoint] = []
-            var size: CGSize = .zero
-            var currentX: CGFloat = 0
-            var currentY: CGFloat = 0
-            var lineHeight: CGFloat = 0
-
-            for subview in subviews {
-                let subviewSize = subview.sizeThatFits(.unspecified)
-
-                if currentX + subviewSize.width > maxWidth && currentX > 0 {
-                    // Move to next line
-                    currentX = 0
-                    currentY += lineHeight + spacing
-                    lineHeight = 0
-                }
-
-                positions.append(CGPoint(x: currentX, y: currentY))
-                lineHeight = max(lineHeight, subviewSize.height)
-                currentX += subviewSize.width + spacing
-                size.width = max(size.width, currentX - spacing)
+        // Not'lardan ilişkili projeleri al
+        for note in notes {
+            if note.tags.contains(tag) && !note.project.isEmpty {
+                projects.insert(note.project)
             }
-
-            size.height = currentY + lineHeight
-            self.size = size
-            self.positions = positions
         }
+
+        // PlannerEvent'lerden de ilişkili projeleri al
+        for event in dataStore.getPlannerEvents() {
+            if normalize(event.tag) == normalize(tag) && !event.project.isEmpty {
+                projects.insert(event.project)
+            }
+        }
+
+        return projects.sorted()
+    }
+
+    private func normalize(_ s: String) -> String {
+        s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(with: Locale.current)
+    }
+
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

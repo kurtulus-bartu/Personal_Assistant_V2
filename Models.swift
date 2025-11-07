@@ -105,6 +105,7 @@ enum PlannerViewMode { case weekly, daily }
 struct Note: Identifiable, Hashable, Codable {
     var id: UUID = UUID()
     var date: Date = Date()
+    var title: String = ""
     var content: String = ""
     var tags: [String] = []
     var project: String = ""
@@ -112,12 +113,14 @@ struct Note: Identifiable, Hashable, Codable {
     init(
         id: UUID = UUID(),
         date: Date = Date(),
+        title: String = "",
         content: String = "",
         tags: [String] = [],
         project: String = ""
     ) {
         self.id = id
         self.date = date
+        self.title = title
         self.content = content
         self.tags = tags
         self.project = project
