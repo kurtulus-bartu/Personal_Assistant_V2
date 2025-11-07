@@ -253,19 +253,76 @@ class DataStore: ObservableObject {
     @Published var pomodoroSessions: [PomodoroItem] = []
     @Published var notes: [NoteItem] = []
 
-    init() {
-        do {
-            let schema = Schema([TaskItem.self, PomodoroItem.self, NoteItem.self])
-            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-            modelContainer = try ModelContainer(for: schema, configurations: [configuration])
-            modelContext = ModelContext(modelContainer)
-
-            fetchTasks()
-            fetchPomodoroSessions()
-            fetchNotes()
-        } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+    /// Clean up corrupted database files
+    static func cleanupDatabase() {
+        let fileManager = FileManager.default
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            print("Could not locate application support directory")
+            return
         }
+
+        // SwiftData typically stores files in a "default.store" file
+        let storeURL = appSupport.appendingPathComponent("default.store")
+        let storeSHMURL = appSupport.appendingPathComponent("default.store-shm")
+        let storeWALURL = appSupport.appendingPathComponent("default.store-wal")
+
+        for url in [storeURL, storeSHMURL, storeWALURL] {
+            if fileManager.fileExists(atPath: url.path) {
+                do {
+                    try fileManager.removeItem(at: url)
+                    print("🗑️ Removed corrupted database file: \(url.lastPathComponent)")
+                } catch {
+                    print("⚠️ Failed to remove \(url.lastPathComponent): \(error)")
+                }
+            }
+        }
+    }
+
+    init() {
+        let schema = Schema([TaskItem.self, PomodoroItem.self, NoteItem.self])
+
+        // Try to create persistent storage first, fall back to in-memory if needed
+        let container: ModelContainer
+        do {
+            let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+            container = try ModelContainer(for: schema, configurations: [configuration])
+            print("✅ ModelContainer initialized successfully with persistent storage")
+        } catch {
+            // If persistent storage fails, try cleaning up and retrying
+            print("⚠️ Failed to create persistent ModelContainer: \(error)")
+            print("⚠️ Error details: \(String(describing: error))")
+            print("🔧 Attempting to clean up corrupted database...")
+
+            DataStore.cleanupDatabase()
+
+            // Try one more time with persistent storage after cleanup
+            do {
+                let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+                container = try ModelContainer(for: schema, configurations: [configuration])
+                print("✅ ModelContainer initialized successfully after cleanup")
+            } catch {
+                // If still failing, fall back to in-memory storage
+                print("⚠️ Still failing after cleanup: \(error)")
+                print("⚠️ Falling back to in-memory storage")
+
+                do {
+                    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                    container = try ModelContainer(for: schema, configurations: [configuration])
+                    print("✅ ModelContainer initialized with in-memory storage")
+                } catch {
+                    fatalError("Failed to create ModelContainer even with in-memory storage: \(error)")
+                }
+            }
+        }
+
+        // Assign to instance properties
+        self.modelContainer = container
+        self.modelContext = ModelContext(container)
+
+        // Fetch initial data
+        fetchTasks()
+        fetchPomodoroSessions()
+        fetchNotes()
     }
 
     // MARK: - Task Operations
