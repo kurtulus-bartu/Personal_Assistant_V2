@@ -188,6 +188,7 @@ struct HealthView: View {
         }
         .onAppear {
             requestHealthKitAuthorization()
+            loadHealthKitData()
         }
         .sheet(isPresented: $showAddMeal) { AddMealSheet }
         .sheet(isPresented: $showAddWorkout) { AddWorkoutSheet }
@@ -972,17 +973,6 @@ struct HealthView: View {
         )
         mealEntries.append(newMeal)
 
-        // Save to Apple Health if authorized
-        if healthKitManager.isAuthorized && calories > 0 {
-            healthKitManager.saveDietaryEnergy(calories: calories, date: selectedDate) { success, error in
-                if success {
-                    print("Meal data saved to Apple Health")
-                } else if let error = error {
-                    print("Error saving meal to Apple Health: \(error.localizedDescription)")
-                }
-            }
-        }
-
         // Reset fields
         newMealDescription = ""
         newMealCalories = ""
@@ -1170,6 +1160,56 @@ struct HealthView: View {
 
             isLoadingHealthData = false
         }
+
+        // Load week workouts
+        let weekStart = calendar.date(byAdding: .day, value: -6, to: calendar.startOfDay(for: selectedDate))!
+        let weekEnd = calendar.startOfDay(for: calendar.date(byAdding: .day, value: 1, to: selectedDate)!)
+
+        healthKitManager.fetchWorkouts(startDate: weekStart, endDate: weekEnd) { [self] hkWorkouts in
+            workoutEntries.removeAll()
+
+            for hkWorkout in hkWorkouts {
+                let workoutType = workoutName(for: hkWorkout.workoutActivityType)
+                let duration = Int(hkWorkout.duration / 60) // Convert seconds to minutes
+                let caloriesBurned = hkWorkout.totalEnergyBurned?.doubleValue(for: HKUnit.kilocalorie()) ?? 0
+
+                let workoutEntry = WorkoutEntry(
+                    date: hkWorkout.startDate,
+                    workoutType: workoutType,
+                    exercises: [],
+                    duration: duration,
+                    caloriesBurned: caloriesBurned,
+                    notes: ""
+                )
+                workoutEntries.append(workoutEntry)
+            }
+        }
+    }
+
+    private func workoutName(for activityType: HKWorkoutActivityType) -> String {
+        switch activityType {
+        case .running: return "Koşu"
+        case .cycling: return "Bisiklet"
+        case .swimming: return "Yüzme"
+        case .walking: return "Yürüyüş"
+        case .hiking: return "Yürüyüş"
+        case .yoga: return "Yoga"
+        case .functionalStrengthTraining: return "Gym"
+        case .traditionalStrengthTraining: return "Gym"
+        case .coreTraining: return "Gym"
+        case .crossTraining: return "CrossFit"
+        case .elliptical: return "Cardio"
+        case .stairClimbing: return "Cardio"
+        case .rowing: return "Cardio"
+        case .boxing: return "Boks"
+        case .kickboxing: return "Kickboks"
+        case .martialArts: return "Dövüş Sanatları"
+        case .dance: return "Dans"
+        case .basketball: return "Basketbol"
+        case .soccer: return "Futbol"
+        case .tennis: return "Tenis"
+        default: return "Egzersiz"
+        }
     }
 
     private func backupData() {
@@ -1192,9 +1232,28 @@ struct HealthView: View {
         let today = calendar.startOfDay(for: selectedDate)
         let weekAgo = calendar.date(byAdding: .day, value: -6, to: today)!
 
-        return sleepEntries.filter { entry in
-            entry.date >= weekAgo && entry.date <= today
-        }.sorted(by: { $0.date < $1.date })
+        // Create array with all 7 days
+        var weekData: [SleepEntry] = []
+        for i in 0..<7 {
+            if let date = calendar.date(byAdding: .day, value: i, to: weekAgo) {
+                // Check if we have sleep data for this day
+                if let existingEntry = sleepEntries.first(where: { calendar.isDate($0.date, inSameDayAs: date) }) {
+                    weekData.append(existingEntry)
+                } else {
+                    // Add placeholder with 0 duration if no data
+                    let placeholder = SleepEntry(
+                        date: date,
+                        bedTime: date,
+                        wakeTime: date,
+                        quality: 0,
+                        notes: ""
+                    )
+                    weekData.append(placeholder)
+                }
+            }
+        }
+
+        return weekData.sorted(by: { $0.date < $1.date })
     }
 
     private func getWeekWorkouts() -> [WorkoutEntry] {

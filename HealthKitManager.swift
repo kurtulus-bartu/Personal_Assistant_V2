@@ -36,15 +36,13 @@ class HealthKitManager: ObservableObject {
             HKObjectType.quantityType(forIdentifier: .bodyFatPercentage)!,
             HKObjectType.quantityType(forIdentifier: .leanBodyMass)!,
             HKObjectType.quantityType(forIdentifier: .bodyMassIndex)!,
+
+            // Workouts
+            HKObjectType.workoutType(),
         ]
 
-        // Define the data types we want to write
-        let typesToWrite: Set<HKSampleType> = [
-            HKObjectType.quantityType(forIdentifier: .dietaryEnergyConsumed)!,
-        ]
-
-        // Request authorization
-        healthStore.requestAuthorization(toShare: typesToWrite, read: typesToRead) { [weak self] success, error in
+        // Request authorization (read-only)
+        healthStore.requestAuthorization(toShare: nil, read: typesToRead) { [weak self] success, error in
             DispatchQueue.main.async {
                 self?.isAuthorized = success
                 completion(success)
@@ -412,24 +410,6 @@ class HealthKitManager: ObservableObject {
         }
     }
 
-    // MARK: - Write Dietary Energy
-
-    func saveDietaryEnergy(calories: Double, date: Date, completion: @escaping (Bool, Error?) -> Void) {
-        guard let energyType = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) else {
-            completion(false, nil)
-            return
-        }
-
-        let quantity = HKQuantity(unit: HKUnit.kilocalorie(), doubleValue: calories)
-        let sample = HKQuantitySample(type: energyType, quantity: quantity, start: date, end: date)
-
-        healthStore.save(sample) { success, error in
-            DispatchQueue.main.async {
-                completion(success, error)
-            }
-        }
-    }
-
     // MARK: - Fetch Month Weight Data
 
     func fetchMonthWeightData(for endDate: Date, completion: @escaping ([Date: (weight: Double?, bodyFat: Double?, leanMass: Double?, bmi: Double?)]) -> Void) {
@@ -484,5 +464,29 @@ class HealthKitManager: ObservableObject {
         dispatchGroup.notify(queue: .main) {
             completion(results)
         }
+    }
+
+    // MARK: - Fetch Workouts
+
+    func fetchWorkouts(startDate: Date, endDate: Date, completion: @escaping ([HKWorkout]) -> Void) {
+        let workoutType = HKObjectType.workoutType()
+
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: endDate, options: .strictStartDate)
+        let sortDescriptor = NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)
+
+        let query = HKSampleQuery(sampleType: workoutType, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [sortDescriptor]) { _, samples, error in
+            guard let workouts = samples as? [HKWorkout] else {
+                DispatchQueue.main.async {
+                    completion([])
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                completion(workouts)
+            }
+        }
+
+        healthStore.execute(query)
     }
 }
