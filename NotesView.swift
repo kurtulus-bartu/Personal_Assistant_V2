@@ -22,6 +22,18 @@ struct NotesView: View {
     @State private var newNoteTag: String = ""
     @State private var newNoteProject: String = ""
 
+    // Edit note states
+    @State private var editedTitle: String = ""
+    @State private var editedContent: String = ""
+    @State private var editedTag: String = ""
+    @State private var editedProject: String = ""
+
+    // Tag/Project management
+    @State private var showAddTag = false
+    @State private var showAddProject = false
+    @State private var newTagName: String = ""
+    @State private var newProjectName: String = ""
+
     private let controlSize: CGFloat = 34
     private let smallControlSize: CGFloat = 30
 
@@ -82,6 +94,36 @@ struct NotesView: View {
                 noteDetailPopup(note)
                     .zIndex(1000)
             }
+
+            // Add Tag Sheet
+            if showAddTag {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showAddTag = false
+                        newTagName = ""
+                        hideKeyboard()
+                    }
+                    .zIndex(999)
+
+                addTagPopup
+                    .zIndex(1000)
+            }
+
+            // Add Project Sheet
+            if showAddProject {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        showAddProject = false
+                        newProjectName = ""
+                        hideKeyboard()
+                    }
+                    .zIndex(999)
+
+                addProjectPopup
+                    .zIndex(1000)
+            }
         }
         .onAppear {
             loadNotes()
@@ -100,7 +142,7 @@ struct NotesView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                squareButton(systemName: "plus") {
+                squareButton(systemName: "square.grid.2x2") {
                     showAddNote = true
                 }
                 squareButton(systemName: "arrow.clockwise") {
@@ -113,7 +155,8 @@ struct NotesView: View {
             .frame(minWidth: 100, alignment: .trailing)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
         .background(Color(UIColor.systemBackground))
     }
 
@@ -122,7 +165,7 @@ struct NotesView: View {
     private var filterView: some View {
         HStack(spacing: 10) {
             smallSquareButton(systemName: "plus", tint: .blue) {
-                // Tag ekleme/düzenleme buradan yapılabilir
+                showAddTag = true
             }
 
             Menu {
@@ -144,7 +187,7 @@ struct NotesView: View {
             }
 
             smallSquareButton(systemName: "plus", tint: .green) {
-                // Proje ekleme/düzenleme buradan yapılabilir
+                showAddProject = true
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -197,15 +240,6 @@ struct NotesView: View {
                 .foregroundColor(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Content preview
-            if !note.content.isEmpty {
-                Text(note.content)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
             // Tags and Project
             if !note.tags.isEmpty || !note.project.isEmpty {
                 HStack(spacing: 8) {
@@ -252,6 +286,10 @@ struct NotesView: View {
         .shadow(color: .black.opacity(0.1), radius: 5, y: 3)
         .onTapGesture {
             selectedNote = note
+            editedTitle = note.title
+            editedContent = note.content
+            editedTag = note.tags.first ?? ""
+            editedProject = note.project
             showNoteDetail = true
         }
     }
@@ -382,12 +420,7 @@ struct NotesView: View {
     // MARK: - Note Detail Popup
 
     private func noteDetailPopup(_ note: Note) -> some View {
-        @State var editedTitle = note.title
-        @State var editedContent = note.content
-        @State var editedTag = note.tags.first ?? ""
-        @State var editedProject = note.project
-
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             // Header
             HStack {
                 Text("Not Detayı")
@@ -805,6 +838,112 @@ struct NotesView: View {
 
     private func normalize(_ s: String) -> String {
         s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(with: Locale.current)
+    }
+
+    // MARK: - Add Tag Popup
+
+    private var addTagPopup: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Yeni Tag Ekle")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button(action: {
+                    showAddTag = false
+                    newTagName = ""
+                    hideKeyboard()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(20)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Bu özellik notlara tag ekleyerek filtreleme yapmanızı sağlar. Yeni tag eklemek için mevcut bir nota tag atayın.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: {
+                    showAddTag = false
+                    hideKeyboard()
+                }) {
+                    Text("Tamam")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(20)
+        }
+        .frame(maxWidth: 400)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 30, y: 15)
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Add Project Popup
+
+    private var addProjectPopup: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Yeni Proje Ekle")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                Spacer()
+                Button(action: {
+                    showAddProject = false
+                    newProjectName = ""
+                    hideKeyboard()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(20)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Bu özellik notları projelere göre organize etmenizi sağlar. Yeni proje eklemek için mevcut bir nota proje atayın.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: {
+                    showAddProject = false
+                    hideKeyboard()
+                }) {
+                    Text("Tamam")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.blue)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+            .padding(20)
+        }
+        .frame(maxWidth: 400)
+        .background(Color(UIColor.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 30, y: 15)
+        .padding(.horizontal, 24)
     }
 
     private func hideKeyboard() {
